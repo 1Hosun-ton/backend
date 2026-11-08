@@ -11,6 +11,8 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
+import org.springframework.web.HttpMediaTypeNotSupportedException;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 
 import java.util.List;
 
@@ -29,6 +31,7 @@ public class GlobalExceptionHandler {
         List<ErrorResponse.FieldError> fieldErrors = e.getBindingResult().getFieldErrors().stream()
                 .map(f -> new ErrorResponse.FieldError(f.getField(), f.getDefaultMessage()))
                 .toList();
+        log.warn("Validation failed: {}", fieldErrors);
         return ResponseEntity.status(ErrorCode.VALIDATION_ERROR.getStatus())
                 .body(ErrorResponse.of(ErrorCode.VALIDATION_ERROR, fieldErrors));
     }
@@ -39,6 +42,7 @@ public class GlobalExceptionHandler {
             MethodArgumentTypeMismatchException.class
     })
     public ResponseEntity<ErrorResponse> handleBadRequest(Exception e) {
+        log.warn("Bad request: {}", e.getMessage());
         return toResponse(ErrorCode.VALIDATION_ERROR);
     }
 
@@ -51,6 +55,15 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ErrorResponse> handleUnexpected(Exception e) {
         log.error("Unhandled exception", e);
         return toResponse(ErrorCode.INTERNAL_ERROR);
+    }
+
+    @ExceptionHandler({
+            HttpRequestMethodNotSupportedException.class,
+            HttpMediaTypeNotSupportedException.class
+    })
+    public ResponseEntity<ErrorResponse> handleMethodNotAllowed(Exception e) {
+        log.warn("Method/MediaType not supported: {}", e.getMessage());
+        return toResponse(ErrorCode.METHOD_NOT_ALLOWED);
     }
 
     private ResponseEntity<ErrorResponse> toResponse(ErrorCode code) {

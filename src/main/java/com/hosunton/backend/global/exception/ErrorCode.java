@@ -6,8 +6,6 @@ public enum ErrorCode {
 
     // 400
     VALIDATION_ERROR(HttpStatus.BAD_REQUEST, "입력값을 다시 확인해 주세요"),
-    PASSWORD_MISMATCH(HttpStatus.BAD_REQUEST, "비밀번호가 서로 달라요"),
-    TERMS_REQUIRED(HttpStatus.BAD_REQUEST, "필수 약관에 동의해 주세요"),
     AMOUNT_REQUIRED(HttpStatus.BAD_REQUEST, "금액을 입력해 주세요"),
     REASON_REGRET_REQUIRED(HttpStatus.BAD_REQUEST, "이유와 후회 여부를 선택해 주세요"),
     FUTURE_DATE_NOT_ALLOWED(HttpStatus.BAD_REQUEST, "미래 날짜는 선택할 수 없어요"),
@@ -21,6 +19,9 @@ public enum ErrorCode {
 
     // 404
     NOT_FOUND(HttpStatus.NOT_FOUND, "대상을 찾을 수 없어요"),
+
+    // 405
+    METHOD_NOT_ALLOWED(HttpStatus.METHOD_NOT_ALLOWED, "지원하지 않는 요청이에요"),
 
     // 409
     EMAIL_ALREADY_EXISTS(HttpStatus.CONFLICT, "이미 가입된 이메일이에요"),

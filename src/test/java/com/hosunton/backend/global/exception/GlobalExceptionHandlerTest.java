@@ -62,6 +62,13 @@ class GlobalExceptionHandlerTest {
     }
 
     @Test
+    void 지원하지_않는_메서드는_405() throws Exception {
+        mockMvc.perform(post("/test/ok"))
+                .andExpect(status().isMethodNotAllowed())
+                .andExpect(jsonPath("$.error.code").value("METHOD_NOT_ALLOWED"));
+    }
+
+    @Test
     void 예상하지_못한_예외는_500() throws Exception {
         mockMvc.perform(get("/test/unexpected"))
                 .andExpect(status().isInternalServerError())
