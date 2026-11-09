@@ -79,4 +79,31 @@ class AuthControllerTest {
                 .andExpect(jsonPath("$.error.code").value("EMAIL_ALREADY_EXISTS"))
                 .andExpect(jsonPath("$.error.message").value("이미 가입된 이메일이에요"));
     }
+
+    @Test
+    void 한글_비밀번호가_72바이트를_넘으면_400() throws Exception {
+        String password = "가".repeat(25); // 25자, 75바이트
+
+        mockMvc.perform(post("/api/v1/auth/signup")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                            {"nickname": "하린", "email": "harin@example.com", "password": "%s"}
+                            """.formatted(password)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
+    }
+
+    @Test
+    void 한글_비밀번호_24자는_통과한다() throws Exception {
+        when(authService.signup(any(SignupRequest.class)))
+                .thenReturn(new AuthResponse("access", "refresh", new UserSummary(1L, "하린", null)));
+        String password = "가".repeat(24); // 24자, 72바이트
+
+        mockMvc.perform(post("/api/v1/auth/signup")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                            {"nickname": "하린", "email": "harin@example.com", "password": "%s"}
+                            """.formatted(password)))
+                .andExpect(status().isCreated());
+    }
 }
