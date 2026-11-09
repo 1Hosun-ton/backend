@@ -60,7 +60,7 @@ CREATE TABLE insights (
                           created_at    TIMESTAMPTZ  NOT NULL DEFAULT now(),
                           CONSTRAINT ck_insights_period_type CHECK (period_type IN ('WEEK', 'MONTH'))
 );
-CREATE INDEX idx_insights_user_id_period ON insights (user_id, period_type, period_start);
+CREATE UNIQUE INDEX idx_insights_user_id_period ON insights (user_id, period_type, period_start);
 
 -- =========================================
 -- mission_recommendations
