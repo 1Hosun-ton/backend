@@ -35,7 +35,9 @@ dependencies {
 
     /* security */
     implementation 'org.springframework.boot:spring-boot-starter-security'
-    // JWT 라이브러리: 방식 결정 후 추가
+    implementation 'io.jsonwebtoken:jjwt-api:0.13.0'
+    runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.13.0'
+    runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.13.0'
 
     /* Swagger */
     implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:3.2.0'
@@ -53,4 +55,6 @@ dependencies {
 
 tasks.named('test') {
     useJUnitPlatform()
+    // 테스트 실행 시마다 무작위 JWT 키 생성 (배포 키와 무관, test 태스크에서만 적용)
+    environment 'JWT_SECRET', UUID.randomUUID().toString() + UUID.randomUUID().toString()
 }
