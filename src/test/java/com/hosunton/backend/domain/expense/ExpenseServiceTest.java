@@ -3,6 +3,7 @@ package com.hosunton.backend.domain.expense;
 import com.hosunton.backend.domain.expense.dto.ExpenseCreateRequest;
 import com.hosunton.backend.domain.expense.dto.ExpenseListResponse;
 import com.hosunton.backend.domain.expense.dto.ExpenseResponse;
+import com.hosunton.backend.domain.insight.InsightCacheService;
 import com.hosunton.backend.global.exception.BusinessException;
 import com.hosunton.backend.global.exception.ErrorCode;
 import org.junit.jupiter.api.BeforeEach;
@@ -43,11 +44,14 @@ class ExpenseServiceTest {
     @Mock
     private ExpenseRepository expenseRepository;
 
+    @Mock
+    private InsightCacheService insightCacheService;
+
     private ExpenseService expenseService;
 
     @BeforeEach
     void setUp() {
-        expenseService = new ExpenseService(expenseRepository, Clock.fixed(NOW, KST));
+        expenseService = new ExpenseService(expenseRepository, insightCacheService, Clock.fixed(NOW, KST));
     }
 
     private ExpenseCreateRequest request(Long amount, LocalDate spentAt, ExpenseReason reason, Boolean regret) {
