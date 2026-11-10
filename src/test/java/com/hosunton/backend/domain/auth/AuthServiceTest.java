@@ -1,8 +1,6 @@
 package com.hosunton.backend.domain.auth;
 
-import com.hosunton.backend.domain.auth.dto.AuthResponse;
-import com.hosunton.backend.domain.auth.dto.LoginRequest;
-import com.hosunton.backend.domain.auth.dto.SignupRequest;
+import com.hosunton.backend.domain.auth.dto.*;
 import com.hosunton.backend.domain.user.User;
 import com.hosunton.backend.domain.user.UserRepository;
 import com.hosunton.backend.global.exception.BusinessException;
@@ -189,5 +187,68 @@ class AuthServiceTest {
         assertThatThrownBy(() -> authService.login(new LoginRequest("harin@example.com", "가".repeat(25))))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode").isEqualTo(ErrorCode.INVALID_CREDENTIALS);
+    }
+
+    @Test
+    void 재발급하면_새_토큰_쌍을_발급하고_기존_토큰은_삭제한다() {
+        String oldRefresh = jwtProvider.createRefreshToken(1L).value();
+        when(refreshTokenRepository.deleteByTokenHash(TokenHasher.sha256(oldRefresh))).thenReturn(1);
+
+        TokenResponse response = authService.refresh(new RefreshTokenRequest(oldRefresh));
+
+        assertThat(jwtProvider.parseAccessToken(response.accessToken())).isEqualTo(1L);
+        assertThat(jwtProvider.parseRefreshToken(response.refreshToken())).isEqualTo(1L);
+        assertThat(response.refreshToken()).isNotEqualTo(oldRefresh);
+
+        ArgumentCaptor<RefreshToken> captor = ArgumentCaptor.forClass(RefreshToken.class);
+        verify(refreshTokenRepository).save(captor.capture());
+        assertThat(captor.getValue().getTokenHash()).isEqualTo(TokenHasher.sha256(response.refreshToken()));
+    }
+
+    @Test
+    void DB에_없는_Refresh_Token이면_INVALID_REFRESH_TOKEN() {
+        String refresh = jwtProvider.createRefreshToken(1L).value();
+        when(refreshTokenRepository.deleteByTokenHash(any())).thenReturn(0);
+
+        assertThatThrownBy(() -> authService.refresh(new RefreshTokenRequest(refresh)))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.INVALID_REFRESH_TOKEN);
+        verify(refreshTokenRepository, never()).save(any());
+    }
+
+    @Test
+    void Access_Token으로_재발급하면_DB를_조회하지_않고_INVALID_REFRESH_TOKEN() {
+        String access = jwtProvider.createAccessToken(1L).value();
+
+        assertThatThrownBy(() -> authService.refresh(new RefreshTokenRequest(access)))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.INVALID_REFRESH_TOKEN);
+        verify(refreshTokenRepository, never()).deleteByTokenHash(any());
+    }
+
+    @Test
+    void 위조된_Refresh_Token이면_INVALID_REFRESH_TOKEN() {
+        assertThatThrownBy(() -> authService.refresh(new RefreshTokenRequest("not-a-jwt")))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.INVALID_REFRESH_TOKEN);
+        verify(refreshTokenRepository, never()).deleteByTokenHash(any());
+    }
+
+    @Test
+    void 로그아웃하면_해시로_Refresh_Token을_삭제한다() {
+        String refresh = jwtProvider.createRefreshToken(1L).value();
+
+        authService.logout(new RefreshTokenRequest(refresh));
+
+        verify(refreshTokenRepository).deleteByTokenHash(TokenHasher.sha256(refresh));
+    }
+
+    @Test
+    void 이미_없는_토큰으로_로그아웃해도_예외가_나지_않는다() {
+        when(refreshTokenRepository.deleteByTokenHash(any())).thenReturn(0);
+
+        authService.logout(new RefreshTokenRequest("already-deleted-or-garbage"));
+
+        verify(refreshTokenRepository).deleteByTokenHash(TokenHasher.sha256("already-deleted-or-garbage"));
     }
 }
