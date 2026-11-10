@@ -1,6 +1,7 @@
 package com.hosunton.backend.domain.auth;
 
 import com.hosunton.backend.domain.auth.dto.AuthResponse;
+import com.hosunton.backend.domain.auth.dto.LoginRequest;
 import com.hosunton.backend.domain.auth.dto.SignupRequest;
 import com.hosunton.backend.domain.auth.dto.UserSummary;
 import com.hosunton.backend.global.exception.BusinessException;
@@ -105,5 +106,34 @@ class AuthControllerTest {
                             {"nickname": "하린", "email": "harin@example.com", "password": "%s"}
                             """.formatted(password)))
                 .andExpect(status().isCreated());
+    }
+
+    @Test
+    void 로그인_성공시_200과_토큰을_반환한다() throws Exception {
+        when(authService.login(any(LoginRequest.class)))
+                .thenReturn(new AuthResponse("access", "refresh", new UserSummary(1L, "하린", 100000)));
+
+        mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"email": "harin@example.com", "password": "123456"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.accessToken").value("access"))
+                .andExpect(jsonPath("$.data.user.weeklyBudget").value(100000));
+    }
+
+    @Test
+    void 로그인_실패시_401_INVALID_CREDENTIALS() throws Exception {
+        when(authService.login(any(LoginRequest.class)))
+                .thenThrow(new BusinessException(ErrorCode.INVALID_CREDENTIALS));
+
+        mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"email": "harin@example.com", "password": "wrong"}
+                                """))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error.code").value("INVALID_CREDENTIALS"));
     }
 }
