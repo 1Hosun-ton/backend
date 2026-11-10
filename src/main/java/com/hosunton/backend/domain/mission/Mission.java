@@ -38,6 +38,10 @@ public class Mission {
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
+    public void updateDifficulty(MissionDifficulty difficulty) {
+        this.difficulty = difficulty;
+    }
+
     public static Mission create(Long userId, Long recommendationId, PatternGroup group,
                                  MissionLevel level, String text, LocalDate startedOn, Instant now) {
         Mission m = new Mission();
