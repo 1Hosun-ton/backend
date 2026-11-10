@@ -35,8 +35,10 @@ class SecurityIntegrationTest {
     private JwtProperties jwtProperties;
 
     private String expiredAccessToken() {
-        Clock twoHoursAgo = Clock.offset(Clock.system(ZoneId.of("Asia/Seoul")), Duration.ofHours(-2));
-        return new JwtProvider(jwtProperties, twoHoursAgo).createAccessToken(1L).value();
+        // 설정된 유효 시간보다 1분 더 전에 발급 → 유효 시간 설정이 바뀌어도 항상 만료된 토큰
+        Duration offset = jwtProperties.accessTokenExpiration().plusMinutes(1).negated();
+        Clock past = Clock.offset(Clock.system(ZoneId.of("Asia/Seoul")), offset);
+        return new JwtProvider(jwtProperties, past).createAccessToken(1L).value();
     }
 
     @Test
