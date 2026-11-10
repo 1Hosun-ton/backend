@@ -1,9 +1,6 @@
 package com.hosunton.backend.domain.auth;
 
-import com.hosunton.backend.domain.auth.dto.AuthResponse;
-import com.hosunton.backend.domain.auth.dto.LoginRequest;
-import com.hosunton.backend.domain.auth.dto.SignupRequest;
-import com.hosunton.backend.domain.auth.dto.UserSummary;
+import com.hosunton.backend.domain.auth.dto.*;
 import com.hosunton.backend.domain.user.User;
 import com.hosunton.backend.domain.user.UserRepository;
 import com.hosunton.backend.global.exception.BusinessException;
@@ -57,25 +54,6 @@ public class AuthService {
         return issueTokens(user);
     }
 
-    private AuthResponse issueTokens(User user) {
-        IssuedToken accessToken = jwtProvider.createAccessToken(user.getId());
-        IssuedToken refreshToken = jwtProvider.createRefreshToken(user.getId());
-
-        Instant now = clock.instant();
-        refreshTokenRepository.save(RefreshToken.create(
-                user.getId(),
-                TokenHasher.sha256(refreshToken.value()),
-                refreshToken.expiresAt(),
-                now
-        ));
-
-        return new AuthResponse(accessToken.value(), refreshToken.value(), UserSummary.from(user));
-    }
-
-    private String normalizeEmail(String email) {
-        return email.trim().toLowerCase(Locale.ROOT);
-    }
-
     @Transactional
     public AuthResponse login(LoginRequest request) {
         User user = userRepository.findByEmail(normalizeEmail(request.email()))
@@ -89,6 +67,47 @@ public class AuthService {
         return issueTokens(user);
     }
 
+    @Transactional
+    public TokenResponse refresh(RefreshTokenRequest request) {
+        String token = request.refreshToken();
+
+        Long userId = jwtProvider.parseRefreshToken(token);
+
+        int deleted = refreshTokenRepository.deleteByTokenHash(TokenHasher.sha256(token));
+        if (deleted == 0) {
+            throw new BusinessException(ErrorCode.INVALID_REFRESH_TOKEN);
+        }
+
+        return issueTokenPair(userId);
+    }
+
+    @Transactional
+    public void logout(RefreshTokenRequest request) {
+        refreshTokenRepository.deleteByTokenHash(TokenHasher.sha256(request.refreshToken()));
+    }
+
+    private AuthResponse issueTokens(User user) {
+        TokenResponse tokens = issueTokenPair(user.getId());
+        return new AuthResponse(tokens.accessToken(), tokens.refreshToken(), UserSummary.from(user));
+    }
+
+    private TokenResponse issueTokenPair(Long userId) {
+        IssuedToken accessToken = jwtProvider.createAccessToken(userId);
+        IssuedToken refreshToken = jwtProvider.createRefreshToken(userId);
+
+        refreshTokenRepository.save(RefreshToken.create(
+                userId,
+                TokenHasher.sha256(refreshToken.value()),
+                refreshToken.expiresAt(),
+                clock.instant()
+        ));
+
+        return new TokenResponse(accessToken.value(), refreshToken.value());
+    }
+
+    private String normalizeEmail(String email) {
+        return email.trim().toLowerCase(Locale.ROOT);
+    }
     private boolean exceedsBcryptLimit(String password) {
         return password.getBytes(StandardCharsets.UTF_8).length > BCRYPT_MAX_BYTES;
     }

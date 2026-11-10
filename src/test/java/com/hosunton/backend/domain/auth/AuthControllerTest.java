@@ -1,9 +1,6 @@
 package com.hosunton.backend.domain.auth;
 
-import com.hosunton.backend.domain.auth.dto.AuthResponse;
-import com.hosunton.backend.domain.auth.dto.LoginRequest;
-import com.hosunton.backend.domain.auth.dto.SignupRequest;
-import com.hosunton.backend.domain.auth.dto.UserSummary;
+import com.hosunton.backend.domain.auth.dto.*;
 import com.hosunton.backend.global.exception.BusinessException;
 import com.hosunton.backend.global.exception.ErrorCode;
 import com.hosunton.backend.global.exception.GlobalExceptionHandler;
@@ -19,8 +16,7 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @ExtendWith(MockitoExtension.class)
 class AuthControllerTest {
@@ -135,5 +131,55 @@ class AuthControllerTest {
                                 """))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.error.code").value("INVALID_CREDENTIALS"));
+    }
+
+    @Test
+    void 재발급_성공시_200과_새_토큰을_반환한다() throws Exception {
+        when(authService.refresh(any(RefreshTokenRequest.class)))
+                .thenReturn(new TokenResponse("new-access", "new-refresh"));
+
+        mockMvc.perform(post("/api/v1/auth/refresh")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"refreshToken": "old-refresh"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.accessToken").value("new-access"))
+                .andExpect(jsonPath("$.data.refreshToken").value("new-refresh"))
+                .andExpect(jsonPath("$.data.user").doesNotExist());
+    }
+
+    @Test
+    void 재발급_실패시_401_INVALID_REFRESH_TOKEN() throws Exception {
+        when(authService.refresh(any(RefreshTokenRequest.class)))
+                .thenThrow(new BusinessException(ErrorCode.INVALID_REFRESH_TOKEN));
+
+        mockMvc.perform(post("/api/v1/auth/refresh")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"refreshToken": "used-refresh"}
+                                """))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error.code").value("INVALID_REFRESH_TOKEN"));
+    }
+
+    @Test
+    void refreshToken이_없으면_400() throws Exception {
+        mockMvc.perform(post("/api/v1/auth/refresh")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
+    }
+
+    @Test
+    void 로그아웃_성공시_204_바디_없음() throws Exception {
+        mockMvc.perform(post("/api/v1/auth/logout")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"refreshToken": "some-refresh"}
+                                """))
+                .andExpect(status().isNoContent())
+                .andExpect(content().string(""));
     }
 }
