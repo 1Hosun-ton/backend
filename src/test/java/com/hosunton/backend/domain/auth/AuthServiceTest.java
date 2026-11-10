@@ -1,6 +1,7 @@
 package com.hosunton.backend.domain.auth;
 
 import com.hosunton.backend.domain.auth.dto.AuthResponse;
+import com.hosunton.backend.domain.auth.dto.LoginRequest;
 import com.hosunton.backend.domain.auth.dto.SignupRequest;
 import com.hosunton.backend.domain.user.User;
 import com.hosunton.backend.domain.user.UserRepository;
@@ -24,6 +25,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -139,5 +141,53 @@ class AuthServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode").isEqualTo(ErrorCode.EMAIL_ALREADY_EXISTS);
         verify(refreshTokenRepository, never()).save(any());
+    }
+
+    private User savedUser(String email, String rawPassword) {
+        User user = User.create(email, "하린", passwordEncoder.encode(rawPassword), NOW);
+        ReflectionTestUtils.setField(user, "id", 1L);
+        return user;
+    }
+
+    @Test
+    void 로그인하면_토큰과_사용자_정보를_반환한다() {
+        when(userRepository.findByEmail("harin@example.com"))
+                .thenReturn(Optional.of(savedUser("harin@example.com", "123456")));
+
+        AuthResponse response = authService.login(new LoginRequest("Harin@Example.com ", "123456"));
+
+        assertThat(jwtProvider.parseAccessToken(response.accessToken())).isEqualTo(1L);
+        assertThat(response.user().userId()).isEqualTo(1L);
+        verify(refreshTokenRepository).save(any(RefreshToken.class));
+    }
+
+    @Test
+    void 가입되지_않은_이메일이면_INVALID_CREDENTIALS() {
+        when(userRepository.findByEmail("none@example.com")).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> authService.login(new LoginRequest("none@example.com", "123456")))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.INVALID_CREDENTIALS);
+    }
+
+    @Test
+    void 비밀번호가_틀리면_INVALID_CREDENTIALS() {
+        when(userRepository.findByEmail("harin@example.com"))
+                .thenReturn(Optional.of(savedUser("harin@example.com", "123456")));
+
+        assertThatThrownBy(() -> authService.login(new LoginRequest("harin@example.com", "wrong-password")))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.INVALID_CREDENTIALS);
+        verify(refreshTokenRepository, never()).save(any());
+    }
+
+    @Test
+    void 비밀번호가_72바이트를_넘으면_예외_없이_INVALID_CREDENTIALS() {
+        when(userRepository.findByEmail("harin@example.com"))
+                .thenReturn(Optional.of(savedUser("harin@example.com", "123456")));
+
+        assertThatThrownBy(() -> authService.login(new LoginRequest("harin@example.com", "가".repeat(25))))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.INVALID_CREDENTIALS);
     }
 }

@@ -1,6 +1,7 @@
 package com.hosunton.backend.domain.auth;
 
 import com.hosunton.backend.domain.auth.dto.AuthResponse;
+import com.hosunton.backend.domain.auth.dto.LoginRequest;
 import com.hosunton.backend.domain.auth.dto.SignupRequest;
 import com.hosunton.backend.domain.auth.dto.UserSummary;
 import com.hosunton.backend.domain.user.User;
@@ -16,6 +17,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.Locale;
@@ -30,6 +32,7 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtProvider jwtProvider;
     private final Clock clock;
+    private static final int BCRYPT_MAX_BYTES = 72;
 
     @Transactional
     public AuthResponse signup(SignupRequest request) {
@@ -72,4 +75,22 @@ public class AuthService {
     private String normalizeEmail(String email) {
         return email.trim().toLowerCase(Locale.ROOT);
     }
+
+    @Transactional
+    public AuthResponse login(LoginRequest request) {
+        User user = userRepository.findByEmail(normalizeEmail(request.email()))
+                .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_CREDENTIALS));
+
+        if (exceedsBcryptLimit(request.password())
+                || !passwordEncoder.matches(request.password(), user.getPasswordHash())) {
+            throw new BusinessException(ErrorCode.INVALID_CREDENTIALS);
+        }
+
+        return issueTokens(user);
+    }
+
+    private boolean exceedsBcryptLimit(String password) {
+        return password.getBytes(StandardCharsets.UTF_8).length > BCRYPT_MAX_BYTES;
+    }
+
 }
