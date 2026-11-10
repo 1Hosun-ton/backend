@@ -1,6 +1,7 @@
 package com.hosunton.backend.domain.auth;
 
 import com.hosunton.backend.domain.auth.dto.AuthResponse;
+import com.hosunton.backend.domain.auth.dto.LoginRequest;
 import com.hosunton.backend.domain.auth.dto.SignupRequest;
 import com.hosunton.backend.global.response.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
@@ -25,5 +26,11 @@ public class AuthController {
     @PostMapping("/signup")
     public ApiResponse<AuthResponse> signup(@Valid @RequestBody SignupRequest request) {
         return ApiResponse.ok(authService.signup(request));
+    }
+
+    @Operation(summary = "로그인", description = "이메일·비밀번호가 맞으면 Access Token과 Refresh Token을 발급합니다.")
+    @PostMapping("/login")
+    public ApiResponse<AuthResponse> login(@Valid @RequestBody LoginRequest request) {
+        return ApiResponse.ok(authService.login(request));
     }
 }
