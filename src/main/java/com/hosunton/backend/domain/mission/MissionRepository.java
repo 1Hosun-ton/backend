@@ -10,6 +10,20 @@ public interface MissionRepository extends JpaRepository<Mission, Long> {
     @Query(value = "select id from users where id = :userId for update", nativeQuery = true)
     Long lockUserForOverview(@Param("userId") Long userId);
 
+    Optional<Mission> findByIdAndUserId(Long id, Long userId);
+
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query("""
+        update Mission m set m.doneDays = m.doneDays + 1, m.lastCheckedOn = :today,
+            m.memo = coalesce(:memo, m.memo)
+        where m.id = :id and m.userId = :userId and m.result is null
+            and m.startedOn between :earliestStart and :today and m.doneDays < 7
+            and (m.lastCheckedOn is null or m.lastCheckedOn < :today)
+        """)
+    int checkToday(@Param("id") Long id, @Param("userId") Long userId,
+                   @Param("today") LocalDate today, @Param("earliestStart") LocalDate earliestStart,
+                   @Param("memo") String memo);
+
     Optional<Mission> findByUserIdAndResultIsNull(Long userId);
     Optional<Mission> findFirstByUserIdAndResultIsNotNullOrderByStartedOnDescIdDesc(Long userId);
     Optional<Mission> findFirstByUserIdAndResultAndDifficultyIsNullOrderByStartedOnDescIdDesc(Long userId, MissionResult result);
