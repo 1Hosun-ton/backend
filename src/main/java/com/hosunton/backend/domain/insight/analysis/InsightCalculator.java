@@ -110,7 +110,7 @@ public final class InsightCalculator {
 
     // ===== 패턴 후보 =====
 
-    static InsightAnalysis.Pattern findPattern(List<Expense> current) {
+    public static InsightAnalysis.Pattern findPattern(List<Expense> current) {
         Map<ExpenseItem, List<Expense>> byItem = new EnumMap<>(ExpenseItem.class);
         for (Expense e : current) {
             byItem.computeIfAbsent(e.getItem(), i -> new ArrayList<>()).add(e);
