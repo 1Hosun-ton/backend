@@ -26,6 +26,7 @@ class MissionServiceTest {
     @Autowired EntityManager em;
     @Autowired org.springframework.test.web.servlet.MockMvc mockMvc;
     @Autowired com.hosunton.backend.global.security.jwt.JwtProvider jwtProvider;
+    @Autowired org.springframework.transaction.PlatformTransactionManager transactionManager;
     MissionService service;
     Long userId;
     @BeforeEach void setup() {
@@ -99,5 +100,120 @@ class MissionServiceTest {
             .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.data.cumulativeExpenseCount").value(5))
             .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.data.recommendations.length()").value(3))
             .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.data.recommendations[0].level").value("BASIC"));
+    }
+
+    private com.hosunton.backend.domain.mission.dto.MissionStartRequest startRequest(Instant createdAt) {
+        var set = recommendations.saveAndFlush(MissionRecommendation.create(userId,
+                MissionRecommender.recommend(PatternGroup.DEFAULT, MissionLevel.BASIC), MissionLevel.BASIC, createdAt));
+        return new com.hosunton.backend.domain.mission.dto.MissionStartRequest(set.getId(), 0);
+    }
+    private void error(Runnable action, com.hosunton.backend.global.exception.ErrorCode code) {
+        org.assertj.core.api.Assertions.assertThatThrownBy(action::run)
+            .isInstanceOfSatisfying(com.hosunton.backend.global.exception.BusinessException.class,
+                    e -> assertThat(e.getErrorCode()).isEqualTo(code));
+    }
+    @Test void 시작_소유권과_만료_및_저장된_추천만_사용() {
+        var expired = startRequest(NOW.minus(7, ChronoUnit.DAYS));
+        error(() -> service.start(userId, expired), com.hosunton.backend.global.exception.ErrorCode.RECOMMENDATION_EXPIRED);
+        var request = startRequest(NOW);
+        error(() -> service.start(-1L, request), com.hosunton.backend.global.exception.ErrorCode.NOT_FOUND);
+        error(() -> service.start(userId, new com.hosunton.backend.domain.mission.dto.MissionStartRequest(request.recommendationSetId(), 3)),
+                com.hosunton.backend.global.exception.ErrorCode.VALIDATION_ERROR);
+        var m = service.start(userId, request);
+        assertThat(m.startedOn()).isEqualTo(TODAY);
+        assertThat(m.endsOn()).isEqualTo(TODAY.plusDays(6));
+        assertThat(m.text()).isEqualTo(MissionCatalog.text(PatternGroup.DEFAULT, MissionLevel.BASIC));
+        assertThat(recommendations.findById(request.recommendationSetId()).orElseThrow().isSelected()).isTrue();
+        error(() -> service.start(userId, request), com.hosunton.backend.global.exception.ErrorCode.RECOMMENDATION_EXPIRED);
+        var other = startRequest(NOW);
+        error(() -> service.start(userId, other), com.hosunton.backend.global.exception.ErrorCode.MISSION_ALREADY_IN_PROGRESS);
+        assertThat(recommendations.findById(other.recommendationSetId()).orElseThrow().isSelected()).isFalse();
+    }
+    @Test void 체크_마지막날_허용_다음날_거부_메모_보존과_중복() {
+        var m = mission(TODAY.minusDays(6), 5);
+        error(() -> service.check(-1L, m.getId(), null), com.hosunton.backend.global.exception.ErrorCode.NOT_FOUND);
+        var checked = service.check(userId, m.getId(), new com.hosunton.backend.domain.mission.dto.MissionCheckRequest("기록"));
+        assertThat(checked.doneDays()).isEqualTo((short) 6);
+        assertThat(checked.checkedOn()).isEqualTo(TODAY);
+        error(() -> service.check(userId, m.getId(), null), com.hosunton.backend.global.exception.ErrorCode.ALREADY_CHECKED_TODAY);
+        var tomorrow = service(Clock.offset(CLOCK, Duration.ofDays(1)));
+        error(() -> tomorrow.check(userId, m.getId(), null), com.hosunton.backend.global.exception.ErrorCode.MISSION_NOT_ACTIVE);
+        assertThat(missions.findById(m.getId()).orElseThrow().getMemo()).isEqualTo("기록");
+    }
+    @Test void 메모_생략하면_유지하고_보내면_덮어쓴다() {
+        var m = mission(TODAY, 0);
+        service.check(userId, m.getId(), new com.hosunton.backend.domain.mission.dto.MissionCheckRequest("첫날"));
+        var tomorrow = service(Clock.offset(CLOCK, Duration.ofDays(1)));
+        assertThat(tomorrow.check(userId, m.getId(), null).memo()).isEqualTo("첫날");
+        var next = service(Clock.offset(CLOCK, Duration.ofDays(2)));
+        assertThat(next.check(userId, m.getId(), new com.hosunton.backend.domain.mission.dto.MissionCheckRequest("새 메모")).memo()).isEqualTo("새 메모");
+    }
+    @Test void 실패_사유는_실패만_허용하며_재입력_가능() {
+        var request = new com.hosunton.backend.domain.mission.dto.MissionDifficultyRequest(MissionDifficulty.FORGOT);
+        var m = mission(TODAY, 0);
+        error(() -> service.updateDifficulty(userId, m.getId(), request), com.hosunton.backend.global.exception.ErrorCode.MISSION_NOT_FAILED);
+        error(() -> service.updateDifficulty(-1L, m.getId(), request), com.hosunton.backend.global.exception.ErrorCode.NOT_FOUND);
+        var later = service(Clock.offset(CLOCK, Duration.ofDays(7)));
+        assertThat(later.updateDifficulty(userId, m.getId(), request).feedbackRequired()).isFalse();
+        assertThat(later.updateDifficulty(userId, m.getId(), new com.hosunton.backend.domain.mission.dto.MissionDifficultyRequest(MissionDifficulty.NO_TIME)).difficulty()).isEqualTo(MissionDifficulty.NO_TIME);
+        var achieved = mission(TODAY.minusDays(7), 5);
+        error(() -> service.updateDifficulty(userId, achieved.getId(), request), com.hosunton.backend.global.exception.ErrorCode.MISSION_NOT_FAILED);
+    }
+    @Test void JWT로_시작_체크_사유와_요청_검증() throws Exception {
+        var request = startRequest(NOW);
+        String token = "Bearer " + jwtProvider.createAccessToken(userId).value();
+        var result = mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/api/v1/missions")
+                .header("Authorization", token).contentType("application/json")
+                .content("{\"recommendationSetId\":" + request.recommendationSetId() + ",\"optionIndex\":0}"))
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isCreated())
+            .andReturn();
+        var id = tools.jackson.databind.json.JsonMapper.builder().build().readTree(result.getResponse().getContentAsString()).path("data").path("missionId").asLong();
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/api/v1/missions/" + id + "/checks")
+                .header("Authorization", token))
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk())
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.data.doneDays").value(1));
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch("/api/v1/missions/" + id + "/difficulty")
+                .header("Authorization", token).contentType("application/json").content("{\"difficulty\":\"FORGOT\"}"))
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isConflict())
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.error.code").value("MISSION_NOT_FAILED"));
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/api/v1/missions")
+                .header("Authorization", token).contentType("application/json").content("{}"))
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isBadRequest());
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/api/v1/missions/" + id + "/checks")
+                .header("Authorization", token).contentType("application/json").content("{\"memo\":\"" + "a".repeat(101) + "\"}"))
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isBadRequest());
+    }
+
+    @Test
+    @org.springframework.transaction.annotation.Transactional(propagation = org.springframework.transaction.annotation.Propagation.NOT_SUPPORTED)
+    void 동시_시작과_체크는_각각_한번만_성공() throws Exception {
+        var tx = new org.springframework.transaction.support.TransactionTemplate(transactionManager);
+        // setup의 사용자 생성은 별도 repository 트랜잭션으로 커밋된다. 테스트 후 본인 데이터만 CASCADE 삭제.
+        var request = tx.execute(status -> startRequest(NOW));
+        var pool = java.util.concurrent.Executors.newFixedThreadPool(2);
+        try {
+            var outcomes = concurrent(pool, () -> tx.execute(status -> service.start(userId, request)));
+            assertThat(outcomes.stream().filter(v -> v instanceof com.hosunton.backend.domain.mission.dto.MissionStartResponse).count()).isEqualTo(1);
+            assertThat(outcomes).contains(com.hosunton.backend.global.exception.ErrorCode.RECOMMENDATION_EXPIRED);
+            Long id = tx.execute(status -> missions.findByUserIdAndResultIsNull(userId).orElseThrow().getId());
+            var checks = concurrent(pool, () -> tx.execute(status -> service.check(userId, id, null)));
+            assertThat(checks.stream().filter(v -> v instanceof com.hosunton.backend.domain.mission.dto.MissionCheckResponse).count()).isEqualTo(1);
+            assertThat(checks).contains(com.hosunton.backend.global.exception.ErrorCode.ALREADY_CHECKED_TODAY);
+            assertThat(tx.execute(status -> missions.findById(id).orElseThrow().getDoneDays()).shortValue()).isEqualTo((short) 1);
+        } finally {
+            pool.shutdownNow();
+            tx.executeWithoutResult(status -> users.deleteById(userId));
+        }
+    }
+    private java.util.List<Object> concurrent(java.util.concurrent.ExecutorService pool, java.util.concurrent.Callable<?> action) throws Exception {
+        var barrier = new java.util.concurrent.CyclicBarrier(2);
+        java.util.concurrent.Callable<Object> task = () -> {
+            barrier.await(10, java.util.concurrent.TimeUnit.SECONDS);
+            try { return action.call(); }
+            catch (com.hosunton.backend.global.exception.BusinessException e) { return e.getErrorCode(); }
+        };
+        var first = pool.submit(task);
+        var second = pool.submit(task);
+        return java.util.List.of(first.get(20, java.util.concurrent.TimeUnit.SECONDS), second.get(20, java.util.concurrent.TimeUnit.SECONDS));
     }
 }

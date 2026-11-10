@@ -31,6 +31,8 @@ public enum ErrorCode {
     ALREADY_CHECKED_TODAY(HttpStatus.CONFLICT, "오늘은 이미 체크했어요"),
     MISSION_NOT_ACTIVE(HttpStatus.CONFLICT, "진행 중인 미션이 아니에요"),
 
+    MISSION_NOT_FAILED(HttpStatus.CONFLICT, "미달성한 미션에만 남길 수 있어요"),
+
     // 422
     NOT_ENOUGH_RECORDS(HttpStatus.UNPROCESSABLE_CONTENT, "기록이 5건 이상이면 맞춤 미션을 추천해 드려요"),
 
