@@ -3,6 +3,7 @@ package com.hosunton.backend.domain.expense;
 import com.hosunton.backend.domain.expense.dto.ExpenseCreateRequest;
 import com.hosunton.backend.domain.expense.dto.ExpenseListResponse;
 import com.hosunton.backend.domain.expense.dto.ExpenseResponse;
+import com.hosunton.backend.domain.insight.InsightCacheService;
 import com.hosunton.backend.global.exception.BusinessException;
 import com.hosunton.backend.global.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
@@ -23,6 +24,7 @@ public class ExpenseService {
     private static final Sort LATEST_FIRST = Sort.by(Sort.Order.desc("spentOn"), Sort.Order.desc("createdAt"));
 
     private final ExpenseRepository expenseRepository;
+    private final InsightCacheService insightCacheService;
     private final Clock clock;
 
     @Transactional
@@ -51,7 +53,9 @@ public class ExpenseService {
                 request.memo(),
                 clock.instant()
         );
-        return ExpenseResponse.from(expenseRepository.save(expense));
+        Expense saved = expenseRepository.save(expense);
+        insightCacheService.invalidate(userId, spentOn);
+        return ExpenseResponse.from(saved);
     }
 
     /**
@@ -98,6 +102,7 @@ public class ExpenseService {
         Expense expense = expenseRepository.findByIdAndUserId(expenseId, userId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND));
         expenseRepository.delete(expense);
+        insightCacheService.invalidate(userId, expense.getSpentOn());
     }
 
     /**
