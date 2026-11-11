@@ -8,6 +8,9 @@ build
 logs
 .env
 .env.*
+# 비밀값이 든 로컬·운영 설정 (.gitignore와 동일). 이미지에 들어가지 않도록 제외한다.
+src/main/resources/application-local.yml
+src/main/resources/application-prod.yml
 docs
 AGENTS.md
 dorabom_claude_handoff_v2
