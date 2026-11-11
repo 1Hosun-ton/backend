@@ -18,6 +18,7 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -124,5 +125,25 @@ class UserServiceTest {
         WeeklyBudgetResponse response = userService.updateWeeklyBudget(USER_ID, new WeeklyBudgetRequest(1));
 
         assertThat(response.weeklyBudget()).isEqualTo(1);
+    }
+
+    @Test
+    void 탈퇴하면_사용자를_삭제한다() {
+        User user = user(100000);
+        when(userRepository.findById(USER_ID)).thenReturn(Optional.of(user));
+
+        userService.withdraw(USER_ID);
+
+        verify(userRepository).delete(user);
+    }
+
+    @Test
+    void 이미_탈퇴한_사용자면_UNAUTHORIZED() {
+        when(userRepository.findById(USER_ID)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> userService.withdraw(USER_ID))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.UNAUTHORIZED);
+        verify(userRepository, never()).delete(any(User.class));
     }
 }
