@@ -8,6 +8,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
@@ -31,5 +32,12 @@ public class UserController {
             @Parameter(hidden = true) @AuthenticationPrincipal Long userId,
             @RequestBody WeeklyBudgetRequest request) {
         return ApiResponse.ok(userService.updateWeeklyBudget(userId, request));
+    }
+
+    @Operation(summary = "회원 탈퇴", description = "계정과 소비 기록, 미션, 인사이트, 로그인 정보를 모두 삭제합니다")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @DeleteMapping
+    public void withdraw(@Parameter(hidden = true) @AuthenticationPrincipal Long userId) {
+        userService.withdraw(userId);
     }
 }

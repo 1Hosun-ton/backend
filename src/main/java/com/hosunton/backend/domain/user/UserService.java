@@ -35,6 +35,11 @@ public class UserService {
         return new WeeklyBudgetResponse(user.getWeeklyBudget());
     }
 
+    @Transactional
+    public void withdraw(Long userId) {
+        userRepository.delete(getUser(userId));
+    }
+
     private User getUser(Long userId) {
         return userRepository.findById(userId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.UNAUTHORIZED));
