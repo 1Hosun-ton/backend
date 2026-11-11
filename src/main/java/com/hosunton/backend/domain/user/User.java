@@ -44,4 +44,8 @@ public class User {
         user.createdAt = now;
         return user;
     }
+
+    public void updateWeeklyBudget (int weeklyBudget) {
+        this.weeklyBudget = weeklyBudget;
+    }
 }
