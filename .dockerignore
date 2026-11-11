@@ -1,0 +1,14 @@
+.git
+.gradle
+build
+.idea
+.vscode
+*.iml
+*.log
+logs
+.env
+.env.*
+docs
+AGENTS.md
+dorabom_claude_handoff_v2
+docker-compose.local.yml
