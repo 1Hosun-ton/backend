@@ -24,4 +24,10 @@ public interface ExpenseRepository extends JpaRepository<Expense, Long>, JpaSpec
             where e.userId = :userId and e.spentOn between :from and :to
             """)
     long sumAmount(@Param("userId") Long userId, @Param("from") LocalDate from, @Param("to") LocalDate to);
+
+    /** 기간 내 기록 건수 (홈) */
+    long countByUserIdAndSpentOnBetween(Long userId, LocalDate from, LocalDate to);
+
+    /** 기간 내 후회한 소비 건수 (홈) */
+    long countByUserIdAndSpentOnBetweenAndRegretTrue(Long userId, LocalDate from, LocalDate to);
 }
