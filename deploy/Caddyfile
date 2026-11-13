@@ -1,0 +1,6 @@
+# DOMAIN은 docker-compose가 .env에서 넘겨준다. (예: dolabom.duckdns.org)
+# Caddy가 Let's Encrypt 인증서를 자동으로 발급·갱신하고, HTTP는 HTTPS로 리다이렉트한다.
+{$DOMAIN} {
+	encode gzip
+	reverse_proxy app:8080
+}
