@@ -1,7 +1,7 @@
 # EC2 ~/app 에서 실행된다. 변수(${DOMAIN})와 앱 환경변수는 같은 폴더의 .env에서 읽는다.
 services:
   app:
-    image: ghcr.io/1hosun-ton/backend:latest
+    image: ghcr.io/1hosun-ton/backend:${IMAGE_TAG:-latest}
     container_name: dolabom-app
     restart: unless-stopped
     env_file: .env
