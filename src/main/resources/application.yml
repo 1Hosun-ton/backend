@@ -23,5 +23,5 @@ jwt:
 # 인사이트 문장 생성용 LLM. 키가 없으면 AI 대신 규칙 기반 문장으로 응답한다.
 gemini:
     api-key: ${GEMINI_API_KEY:}
-    model: ${GEMINI_MODEL:gemini-2.5-flash}
+    model: ${GEMINI_MODEL:gemini-3.5-flash-lite}
     timeout: 15s
