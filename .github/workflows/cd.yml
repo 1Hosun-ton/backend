@@ -83,21 +83,32 @@ jobs:
 
             docker compose up -d
 
-            # Caddyfile이 바뀌었을 수 있으니 다시 읽게 한다. (컨테이너 재시작 없이 무중단 반영)
-            docker compose exec -T caddy caddy reload --config /etc/caddy/Caddyfile
+            # Caddyfile 변경 반영. 관리 API가 뜰 때까지 최대 30초 재시도한다.
+            # 컨테이너가 새로 만들어진 경우엔 이미 새 Caddyfile을 읽은 상태라, 끝내 실패해도 배포는 계속한다.
+            for i in $(seq 1 15); do
+              if docker compose exec -T caddy caddy reload --config /etc/caddy/Caddyfile 2>/dev/null; then
+                echo "Caddy 설정 반영 완료"
+                break
+              fi
+              if [ "$i" -eq 15 ]; then
+                echo "경고: caddy reload 실패 (새로 만든 컨테이너라면 이미 최신 설정)"
+              fi
+              sleep 2
+            done
 
-            # 앱이 실제로 응답할 때까지 최대 150초 기다린다. 실패하면 로그를 남기고 배포를 실패로 처리한다.
-            for i in $(seq 1 30); do
-              if docker compose exec -T caddy wget -q -O /dev/null http://app:8080/v3/api-docs; then
-                echo "앱 응답 확인 ($SHA)"
-                docker image prune -f
+            # 앱 응답 확인. 요청마다 5초, 전체 150초 제한. 실패하면 로그를 남기고 배포를 실패로 처리한다.
+            DEADLINE=$(( $(date +%s) + 150 ))
+            until docker compose exec -T caddy wget -q -T 5 -O /dev/null http://app:8080/v3/api-docs; do
+              if [ "$(date +%s)" -ge "$DEADLINE" ]; then
+                echo "앱이 150초 안에 응답하지 않았습니다."
                 docker compose ps
-                exit 0
+                docker compose logs --tail 100 app
+                exit 1
               fi
               sleep 5
             done
 
-            echo "앱이 150초 안에 응답하지 않았습니다."
+            echo "앱 응답 확인 ($SHA)"
+            # 실행 중인 컨테이너가 쓰지 않는 이미지를 모두 정리한다. (SHA 태그 이미지 누적 방지)
+            docker image prune -a -f
             docker compose ps
-            docker compose logs --tail 100 app
-            exit 1
