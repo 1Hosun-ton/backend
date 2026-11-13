@@ -1,0 +1,15 @@
+services:
+  postgres:
+    image: postgres:17
+    container_name: hosun-postgres
+    environment:
+      POSTGRES_DB: hosun
+      POSTGRES_USER: hosun
+      POSTGRES_PASSWORD: hosun
+    ports:
+      - "5433:5432"
+    volumes:
+      - hosun-pg-data:/var/lib/postgresql/data
+
+volumes:
+  hosun-pg-data:
