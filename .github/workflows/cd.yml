@@ -1,0 +1,114 @@
+name: CD
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# 배포가 겹치지 않게 한 번에 하나씩 순서대로 실행한다. (진행 중인 배포는 취소하지 않음)
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+env:
+  # GHCR 이미지 이름은 소문자여야 한다.
+  IMAGE: ghcr.io/1hosun-ton/backend
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # EC2가 t3(x86)이므로 linux/amd64로 빌드한다. 테스트는 CI(PR)에서 이미 통과한 상태다.
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:latest
+            ${{ env.IMAGE }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - name: Deploy to EC2
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_USER: ${{ github.actor }}
+          SHA: ${{ github.sha }}
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ubuntu
+          key: ${{ secrets.EC2_SSH_KEY }}
+          envs: GHCR_TOKEN,GHCR_USER,SHA
+          command_timeout: 15m
+          script: |
+            set -e
+            mkdir -p ~/app && cd ~/app
+
+            # 배포 설정 파일은 이번 커밋 기준으로 받아 온다. (.env는 서버에만 있고 덮어쓰지 않는다)
+            BASE=https://raw.githubusercontent.com/1Hosun-ton/backend/$SHA/deploy
+            curl -fsSL $BASE/docker-compose.yml -o docker-compose.yml
+            curl -fsSL $BASE/Caddyfile -o Caddyfile
+
+            test -f .env || { echo "~/app/.env 가 없습니다. deploy/.env.example을 참고해 먼저 만들어 주세요."; exit 1; }
+
+            # 이번 커밋의 이미지로 정확히 배포한다. (latest가 아니라 SHA 태그)
+            export IMAGE_TAG=$SHA
+
+            # 패키지가 private이어도 pull할 수 있게 이번 job의 임시 토큰으로 로그인했다가 바로 로그아웃한다.
+            echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
+            docker compose pull app
+            docker logout ghcr.io
+
+            docker compose up -d
+
+            # Caddyfile 변경 반영. 관리 API가 뜰 때까지 최대 30초 재시도한다.
+            # 컨테이너가 새로 만들어진 경우엔 이미 새 Caddyfile을 읽은 상태라, 끝내 실패해도 배포는 계속한다.
+            for i in $(seq 1 15); do
+              if docker compose exec -T caddy caddy reload --config /etc/caddy/Caddyfile 2>/dev/null; then
+                echo "Caddy 설정 반영 완료"
+                break
+              fi
+              if [ "$i" -eq 15 ]; then
+                echo "경고: caddy reload 실패 (새로 만든 컨테이너라면 이미 최신 설정)"
+              fi
+              sleep 2
+            done
+
+            # 앱 응답 확인. 요청마다 5초, 전체 150초 제한. 실패하면 로그를 남기고 배포를 실패로 처리한다.
+            DEADLINE=$(( $(date +%s) + 150 ))
+            until docker compose exec -T caddy wget -q -T 5 -O /dev/null http://app:8080/v3/api-docs; do
+              if [ "$(date +%s)" -ge "$DEADLINE" ]; then
+                echo "앱이 150초 안에 응답하지 않았습니다."
+                docker compose ps
+                docker compose logs --tail 100 app
+                exit 1
+              fi
+              sleep 5
+            done
+
+            echo "앱 응답 확인 ($SHA)"
+            # 실행 중인 컨테이너가 쓰지 않는 이미지를 모두 정리한다. (SHA 태그 이미지 누적 방지)
+            docker image prune -a -f
+            docker compose ps

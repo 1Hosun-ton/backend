@@ -1,0 +1,40 @@
+# EC2 ~/app 에서 실행된다. 변수(${DOMAIN})와 앱 환경변수는 같은 폴더의 .env에서 읽는다.
+services:
+  app:
+    image: ghcr.io/1hosun-ton/backend:${IMAGE_TAG:-latest}
+    container_name: dolabom-app
+    restart: unless-stopped
+    env_file: .env
+    # 8080은 호스트에 열지 않는다. Caddy만 내부 네트워크로 접근한다.
+    expose:
+      - "8080"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  caddy:
+    image: caddy:2
+    container_name: dolabom-caddy
+    restart: unless-stopped
+    depends_on:
+      - app
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data      # 발급받은 인증서 보관 (지우면 재발급)
+      - caddy_config:/config
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  caddy_data:
+  caddy_config:
