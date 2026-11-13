@@ -1,5 +1,7 @@
 package com.hosunton.backend.domain.insight.ai;
 
+import com.hosunton.backend.domain.expense.ExpenseItem;
+import com.hosunton.backend.domain.expense.ExpenseReason;
 import com.hosunton.backend.domain.insight.InsightLabels;
 import com.hosunton.backend.domain.insight.PeriodType;
 import com.hosunton.backend.domain.insight.analysis.InsightAnalysis;
@@ -172,24 +174,56 @@ public class InsightNarrator {
 
     InsightText fallback(PeriodType type, InsightAnalysis a) {
         InsightAnalysis.Pattern p = a.pattern();
-        String reason = InsightLabels.of(p.reason());
         String item = InsightLabels.of(p.item());
 
-        String insight = "'%s' 이유로 쓴 %s 지출은 같은 항목의 다른 지출보다 건당 금액이 높게 나타나요."
-                .formatted(reason, item);
+        String insight = "%s 쓴 %s 지출은 다른 %s 지출보다 건당 금액이 높아요."
+                .formatted(reasonPhrase(p.reason()), item, item);
 
+        // AI 지시문의 comparison 규칙과 같은 문장: 전체 지출 증감률 하나만 쓴다.
         String comparison = null;
         if (a.previous() != null) {
-            int regretChange = a.regretCount() - a.previous().regretCount();
-            String previous = InsightLabels.previousPeriod(type);
-            comparison = regretChange == 0
-                    ? "%s와 후회한 소비 건수가 같아요.".formatted(previous)
-                    : "%s보다 후회한 소비가 %d건 %s.".formatted(previous, Math.abs(regretChange),
-                    regretChange > 0 ? "늘었어요" : "줄었어요");
+            BigDecimal rate = BigDecimal.valueOf(a.previous().totalAmountChangeRate());
+            comparison = rate.signum() == 0
+                    ? (type == PeriodType.MONTH ? "지난달과 전체 지출이 같아요" : "지난주와 전체 지출이 같아요")
+                    : "%s보다 전체 지출이 %s%% %s".formatted(InsightLabels.previousPeriod(type),
+                    rate.abs().stripTrailingZeros().toPlainString(),
+                    rate.signum() > 0 ? "늘었어요" : "줄었어요");
         }
 
-        String suggestion = "다음에 %s 결제 전에 지금 쓰는 이유를 한 번 떠올려 보는 건 어때요?".formatted(item);
-        String question = "'%s' 이유로 %s을(를) 선택하게 되는 순간은 언제일까요?".formatted(reason, item);
-        return new InsightText(insight, comparison, suggestion, question);
+        String[] advice = fallbackAdvice(p.reason(), p.item());
+        return new InsightText(insight, comparison, advice[0], advice[1]);
+    }
+
+    private static String reasonPhrase(ExpenseReason reason) {
+        return switch (reason) {
+            case NEED -> "필요해서";
+            case STRESS -> "스트레스 해소로";
+            case DISCOUNT -> "할인을 보고";
+            case IMPULSE -> "즉흥적으로";
+            case REWARD -> "보상으로";
+            case HABIT -> "습관처럼";
+        };
+    }
+
+    /** 기획안 7-2 패턴 그룹별 대체 문장. [suggestion, questionForReflection] */
+    private static String[] fallbackAdvice(ExpenseReason reason, ExpenseItem item) {
+        if (item == ExpenseItem.DELIVERY && (reason == ExpenseReason.STRESS || reason == ExpenseReason.REWARD)) {
+            return new String[]{
+                    "배달 앱을 열기 전에 물 한 잔 마시고 5분 뒤에 결정해 보는 건 어때요?",
+                    "스트레스나 보상이 필요했던 날, 기분이 나아졌던 다른 방법이 있었나요?"};
+        }
+        if (item == ExpenseItem.SHOPPING && (reason == ExpenseReason.IMPULSE || reason == ExpenseReason.DISCOUNT)) {
+            return new String[]{
+                    "결제하기 전에 장바구니에 담아 두고 10분 기다려 보는 건 어때요?",
+                    "그 물건을 산 뒤에도 만족스러웠는지 떠올려 볼까요?"};
+        }
+        if ((item == ExpenseItem.CAFE || item == ExpenseItem.FOOD) && reason == ExpenseReason.HABIT) {
+            return new String[]{
+                    "결제하기 전에 오늘 이미 쓴 금액을 한 번 확인해 보는 건 어때요?",
+                    "습관처럼 쓴 돈 중에 정말 원해서 쓴 건 무엇이었나요?"};
+        }
+        return new String[]{
+                "결제하기 전에 이번 주 남은 예산을 한 번 확인해 보는 건 어때요?",
+                "이번 기간 소비 중 가장 만족스러웠던 건 무엇이었나요?"};
     }
 }
