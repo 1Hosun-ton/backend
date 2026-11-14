@@ -81,34 +81,16 @@ public class InsightNarrator {
                         "count", s.count(), "ratio", s.ratio()))
                 .toList());
         InsightAnalysis.Pattern p = a.pattern();
-        InsightAnalysis.PatternContrast c = a.contrast();
         Map<String, Object> keyPattern = new LinkedHashMap<>();
         keyPattern.put("patternType", p.type().name());
         keyPattern.put("reason", InsightLabels.of(p.reason()));
         keyPattern.put("item", InsightLabels.of(p.item()));
         keyPattern.put("count", p.comboCount());
-        keyPattern.put("comboTotal", p.comboTotal());
-        keyPattern.put("comboAverage", p.comboAverage());
-        keyPattern.put("othersAverage", p.othersAverage());
-        keyPattern.put("itemTotal", p.itemTotal());
+        keyPattern.put("total", p.comboTotal());
         keyPattern.put("regretCount", p.comboRegretCount());
-        keyPattern.put("shareOfTotal", percent(p.comboTotal(), a.totalAmount()));
-        keyPattern.put("regretRate", wholePercent(p.comboRegretCount(), p.comboCount()));
-        keyPattern.put("representativeItemCount", c.representativeItemCount());
-        keyPattern.put("moods", moodCounts(c.patternMoods()));
+        keyPattern.put("representativeItemCount", representativeItemCount(a));
         current.put("keyPattern", keyPattern);
-
-        // 비교 대상: ITEM_AMOUNT 는 같은 항목의 다른 이유 기록, 그 외는 다른 이유 기록. 기분은 입력한 기록만 센다.
-        Map<String, Object> comparedTo = new LinkedHashMap<>();
-        comparedTo.put("count", c.othersCount());
-        comparedTo.put("regretCount", c.othersRegretCount());
-        comparedTo.put("regretRate", c.othersCount() == 0 ? null : wholePercent(c.othersRegretCount(), c.othersCount()));
-        comparedTo.put("averageAmount", c.othersCount() == 0 ? null : p.othersAverage());
-        comparedTo.put("averageRatio", p.othersAverage() == 0 ? null
-                : BigDecimal.valueOf(p.comboAverage()).divide(BigDecimal.valueOf(p.othersAverage()), 1, RoundingMode.HALF_UP)
-                        .doubleValue());
-        comparedTo.put("moods", moodCounts(c.othersMoods()));
-        current.put("comparedTo", comparedTo);
+        payload.put("findings", findingsPayload(a));
         payload.put("current_stats", current);
 
         if (a.previous() == null) {
@@ -133,6 +115,71 @@ public class InsightNarrator {
             payload.put("changes", changes);
         }
         return payload;
+    }
+
+    /** 강한 발견 최대 3개 + BASIC. 라벨은 한국어로 바꾸고, 금액 비교 대상 이름(comparedLabel)을 붙인다. */
+    private static List<Map<String, Object>> findingsPayload(InsightAnalysis a) {
+        List<InsightAnalysis.Finding> all = a.findings();
+        List<InsightAnalysis.Finding> picked = new java.util.ArrayList<>(all.stream()
+                .filter(f -> f.type() != InsightAnalysis.FindingType.BASIC).limit(3).toList());
+        all.stream().filter(f -> f.type() == InsightAnalysis.FindingType.BASIC).findFirst().ifPresent(picked::add);
+
+        InsightAnalysis.Pattern p = a.pattern();
+        String comparedLabel = p.type() == InsightAnalysis.PatternType.ITEM_AMOUNT
+                ? "다른 " + InsightLabels.of(p.item()) : "다른 이유로 쓴 소비";
+        return picked.stream().map(f -> {
+            Map<String, Object> facts = new LinkedHashMap<>();
+            f.facts().forEach((k, v) -> facts.put(k, label(v)));
+            if (facts.containsKey("othersAverage")) {
+                facts.put("comparedLabel", comparedLabel);
+            }
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("type", f.type().name());
+            m.put("facts", facts);
+            return m;
+        }).toList();
+    }
+
+    private static Object label(Object v) {
+        if (v instanceof ExpenseMood m) {
+            return InsightLabels.of(m);
+        }
+        if (v instanceof ExpenseReason r) {
+            return InsightLabels.of(r);
+        }
+        if (v instanceof ExpenseItem i) {
+            return InsightLabels.of(i);
+        }
+        if (v instanceof java.time.DayOfWeek d) {
+            return dayLabel(d);
+        }
+        return v;
+    }
+
+    private static String dayLabel(java.time.DayOfWeek d) {
+        return switch (d) {
+            case MONDAY -> "월요일";
+            case TUESDAY -> "화요일";
+            case WEDNESDAY -> "수요일";
+            case THURSDAY -> "목요일";
+            case FRIDAY -> "금요일";
+            case SATURDAY -> "토요일";
+            case SUNDAY -> "일요일";
+        };
+    }
+
+    /** 패턴 기록 중 대표 항목 기록 수 (ITEM_AMOUNT 는 전부 대표 항목이다). */
+    private static int representativeItemCount(InsightAnalysis a) {
+        InsightAnalysis.Pattern p = a.pattern();
+        if (p.type() == InsightAnalysis.PatternType.ITEM_AMOUNT) {
+            return p.comboCount();
+        }
+        return a.findings().stream()
+                .filter(f -> f.type() == InsightAnalysis.FindingType.BASIC)
+                .map(f -> (Object) f.facts().get("representativeItemCount"))
+                .filter(java.util.Objects::nonNull)
+                .map(o -> ((Number) o).intValue())
+                .findFirst().orElse(0);
     }
 
     // ===== 검증: 빈 문장·길이·입력에 없는 숫자 =====
@@ -255,14 +302,7 @@ public class InsightNarrator {
         String item = InsightLabels.of(p.item());
 
         String reason = reasonPhrase(p.reason());
-        String insight = switch (p.type()) {
-            case ITEM_AMOUNT -> "%s 쓴 %s 지출은 다른 %s 지출보다 건당 금액이 높아요.".formatted(reason, item, item);
-            case REASON_AMOUNT -> "%s 쓴 소비는 다른 이유로 쓴 소비보다 건당 금액이 높아요.".formatted(reason);
-            case REASON_REGRET -> p.comboRegretCount() == p.comboCount()
-                    ? "%s 쓴 소비는 모두 후회했어요.".formatted(reason)
-                    : "%s 쓴 소비에서 후회한 기록이 많았어요.".formatted(reason);
-            case REASON_FREQUENT -> "%s 쓴 소비가 가장 잦았어요.".formatted(reason);
-        };
+        String insight = fallbackInsight(a, reason, item);
 
         // AI 지시문의 comparison 규칙과 같은 문장: 전체 지출 증감률 하나만 쓴다.
         String comparison = null;
@@ -277,6 +317,66 @@ public class InsightNarrator {
 
         String[] advice = fallbackAdvice(p.reason(), p.item());
         return new InsightText(insight, comparison, advice[0], advice[1]);
+    }
+
+    /** 가장 강한 발견 하나를 담담한 사실로 쓴다. 해석은 AI 에게만 맡긴다. */
+    private static String fallbackInsight(InsightAnalysis a, String reason, String item) {
+        InsightAnalysis.Pattern p = a.pattern();
+        String subject = reason + " 쓴 소비";
+        InsightAnalysis.Finding top = a.findings().isEmpty() ? null : a.findings().getFirst();
+        Map<String, Object> f = top == null ? Map.of() : top.facts();
+        if (top != null) {
+            switch (top.type()) {
+                case INTENT_BACKFIRE -> {
+                    if (p.reason() == ExpenseReason.DISCOUNT) {
+                        return "할인을 보고 산 소비가 오히려 건당 금액이 더 컸어요.";
+                    }
+                    return "%s %s건 중 %s건이 후회로 남았어요.".formatted(subject, f.get("count"), f.get("regretCount"));
+                }
+                case REGRET_CONCENTRATION -> {
+                    return "이번에 후회한 소비 %s건 중 %s건이 %s였어요.".formatted(
+                            f.get("totalRegretCount"), f.get("regretCount"), subject);
+                }
+                case MOOD_TRIGGER -> {
+                    return "%s 날의 소비는 대부분 %s였어요.".formatted(moodPhrase((ExpenseMood) f.get("mood")), subject);
+                }
+                case DAY_TRIGGER -> {
+                    Object day = f.get("day");
+                    return "%s %s건 중 %s건이 %s.".formatted(subject, f.get("count"), f.get("dayCount"),
+                            day instanceof java.time.DayOfWeek d ? dayLabel(d) + "이었어요" : "주말이었어요");
+                }
+                case SMALL_ADDS_UP -> {
+                    return "%s는 한 번은 작아도 %s번 모이니 %,d원이었어요.".formatted(subject, f.get("count"),
+                            ((Number) f.get("total")).longValue());
+                }
+                case AMOUNT_WEIGHT -> {
+                    return "%s는 기록의 %s%%였지만 지출의 %s%%였어요.".formatted(subject, f.get("countShare"),
+                            f.get("amountShare"));
+                }
+                case REGRET_GAP -> {
+                    return "%s %s건 중 %s건을 후회했어요.".formatted(subject, f.get("count"), f.get("regretCount"));
+                }
+                default -> {
+                }
+            }
+        }
+        return switch (p.type()) {
+            case ITEM_AMOUNT -> "%s 쓴 %s 지출은 다른 %s 지출보다 건당 금액이 높아요.".formatted(reason, item, item);
+            case REASON_AMOUNT -> "%s 쓴 소비는 다른 이유로 쓴 소비보다 건당 금액이 높아요.".formatted(reason);
+            case REASON_REGRET -> p.comboRegretCount() == p.comboCount()
+                    ? "%s 쓴 소비는 모두 후회했어요.".formatted(reason)
+                    : "%s 쓴 소비에서 후회한 기록이 많았어요.".formatted(reason);
+            case REASON_FREQUENT -> "%s 쓴 소비가 가장 많았어요.".formatted(reason);
+        };
+    }
+
+    private static String moodPhrase(ExpenseMood mood) {
+        return switch (mood) {
+            case TIRED -> "지친다고 기록한";
+            case DEPRESSED -> "우울하다고 기록한";
+            case GOOD -> "기분이 좋다고 기록한";
+            case NORMAL -> "보통이라고 기록한";
+        };
     }
 
     private static String reasonPhrase(ExpenseReason reason) {
