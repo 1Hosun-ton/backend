@@ -25,7 +25,7 @@ public class GeminiInsightWriter implements InsightWriter {
               · ITEM_AMOUNT: reason 이유로 쓴 item 이 같은 항목의 다른 기록보다 건당 금액이 높은 조합. count 는 그 조합의 기록 수다.
               · REASON_AMOUNT: reason 이유로 쓴 소비(항목 상관없음)가 다른 이유로 쓴 소비보다 건당 금액이 높다.
               · REASON_REGRET: reason 이유로 쓴 소비 중 절반 이상을 후회했다.
-              · REASON_FREQUENT: reason 이 이번 기간에 가장 자주 쓴 소비 이유다.
+              · REASON_FREQUENT: reason 이 이번 기간에 가장 많이 기록한 소비 이유다.
               ITEM_AMOUNT 가 아니면 count 는 그 이유의 기록 수, item 은 그 이유로 가장 많이 쓴 대표 항목이다. representativeItemCount 는 패턴 기록 중 item 기록 수다.
               regretCount·regretRate 는 패턴 기록 중 후회한 건수·비율(%), comboAverage 는 건당 평균 금액, shareOfTotal 은 이번 기간 전체 지출 중 비중(%), moods 는 사용자가 기록한 기분별 건수다(기분을 적지 않은 기록은 빠진다).
             - current_stats.comparedTo: 패턴과 견줄 나머지 기록. ITEM_AMOUNT 면 같은 항목의 다른 이유 기록, 그 외는 다른 이유로 쓴 기록이다. count, regretCount, regretRate(%), averageAmount(건당 평균), averageRatio(패턴 건당 평균이 이 평균의 몇 배인지), moods 가 있다. 값이 없으면 null 이다.
@@ -33,13 +33,13 @@ public class GeminiInsightWriter implements InsightWriter {
 
             1. insight: 이 사람의 소비에서 가장 눈에 띄는 대비를 짚어, 스스로 "아, 그랬구나" 하고 알아차리게 하는 두 문장 이내의 관찰.
                - 담는 사실은 두 문장을 합쳐 **두 가지까지만**이다. 아래 대비 중 해당하는 것을 우선순위대로 골라 쓴다. 사실을 세 가지 이상 늘어놓지 않는다.
-                 · 후회 대비: keyPattern.regretRate 가 comparedTo.regretRate 보다 30 이상 높다 → "3건 중 2건을 후회했는데, 다른 이유로 쓴 소비는 후회가 없었어요"처럼. 단, ITEM_AMOUNT 면 comparedTo 가 같은 항목의 다른 이유 기록뿐이므로 "다른 {item}은 후회가 없었어요"(예: 다른 배달 음식은)라고 쓰고 "다른 이유로 쓴 소비"라고 쓰지 않는다. regretCount 가 count 와 같으면 "2건 중 2건"이라고 쓰지 않고 "2건 모두 후회했는데"처럼 쓴다.
+                 · 후회 대비: keyPattern.regretRate 가 comparedTo.regretRate 보다 30 이상 높다 → comparedTo.regretCount 가 0 이면 "3건 중 2건을 후회했는데, 다른 이유로 쓴 소비는 후회가 없었어요"처럼, 0 이 아니면 "3건 중 2건을 후회했는데, 다른 이유로 쓴 소비는 4건 중 1건을 후회했어요"처럼 comparedTo 의 count·regretCount 를 그대로 쓴다. "후회가 없었어요"는 comparedTo.regretCount 가 0 일 때만 쓴다. 단, ITEM_AMOUNT 면 comparedTo 가 같은 항목의 다른 이유 기록뿐이므로 "다른 이유로 쓴 소비" 대신 "다른 {item}"(예: 다른 배달 음식은)이라고 쓴다. regretCount 가 count 와 같으면 "2건 중 2건"이라고 쓰지 않고 "2건 모두 후회했는데"처럼 쓴다.
                  · 기분: keyPattern.moods 에 같은 기분이 2건 이상이다 → 그 건수가 count 와 같으면 "두 번 모두 지친다고 기록한 날이었어요"(세 번이면 "세 번 모두"), 아니면 "그중 2건은 지친다고 기록한 날이었어요"처럼.
                  · 금액 대비: comparedTo.averageRatio 가 1.5 이상이다 → "건당 평균 18,000원으로 다른 이유로 쓴 소비의 2.2배였어요"처럼. 단, ITEM_AMOUNT 면 "다른 {item}의 2.2배"(예: 다른 배달 음식의)라고 쓰고 "다른 이유로 쓴 소비"라고 쓰지 않는다.
                  · 반복: representativeItemCount 가 count 와 같고 2 이상이다 → "두 번 모두 카페였어요"처럼.
                - 첫 문장: 주어는 keyPattern 의 이유(와 항목)로 하고, 가장 우선하는 대비 하나를 숫자와 함께 쓴다. 해당하는 대비가 없으면 아래 patternType 사실을 쓴다.
-               - 두 번째 문장(선택): 다음 대비 하나, 또는 대비가 하나뿐이면 그 대비가 보여 주는 모습을 담담하게 한마디로 쓴다. 예: "지친다고 기록한 날에 이 소비가 몰려 있어요.", "금액은 작아도 꾸준히 반복되는 지출이에요." 원인이나 속마음을 단정하지 않는다("스트레스 때문에", "외로워서", "보상 심리로" 같은 말 금지).
-               - patternType 사실 표현(대비가 없을 때): ITEM_AMOUNT → "{이유} {item}은 다른 {item}보다 건당 금액이 높았어요"(비교 대상은 "다른 {item}"). REASON_AMOUNT → "{이유} 쓴 소비는 다른 이유보다 건당 금액이 높았어요". REASON_REGRET → 후회 사실(regretCount 가 count 와 같으면 "모두 후회했어요"). REASON_FREQUENT → "{이유} 쓴 소비가 가장 잦았어요". 같은 뜻을 두 번 쓰지 않는다.
+               - 두 번째 문장(선택): 다음 대비 하나, 또는 대비가 하나뿐이면 그 대비가 보여 주는 모습을 담담하게 한마디로 쓴다. 예: "그중 2건은 지친다고 기록한 날이었어요." 두 문장을 합쳐 사실이 두 가지를 넘으면 두 번째 문장을 쓰지 않는다. 원인이나 속마음을 단정하지 않는다("스트레스 때문에", "외로워서", "보상 심리로" 같은 말 금지).
+               - patternType 사실 표현(대비가 없을 때): ITEM_AMOUNT → "{이유} {item}은 다른 {item}보다 건당 금액이 높았어요"(비교 대상은 "다른 {item}"). REASON_AMOUNT → "{이유} 쓴 소비는 다른 이유보다 건당 금액이 높았어요". REASON_REGRET → 후회 사실(regretCount 가 count 와 같으면 "모두 후회했어요"). REASON_FREQUENT → "{이유} 쓴 소비가 가장 많았어요". 같은 뜻을 두 번 쓰지 않는다.
                - 이유는 자연스러운 말로 풀어 쓴다(필요해서 → 필요해서, 스트레스 해소 → 스트레스를 풀려고, 할인 → 할인을 보고, 충동 → 즉흥적으로, 보상 → 나에게 주는 보상으로, 습관 → 습관처럼).
                - 기분은 사용자가 적은 것임을 드러낸다: 좋음 → 기분이 좋다고 기록한 날, 보통 → 보통이라고 기록한 날, 지침 → 지친다고 기록한 날, 우울 → 우울하다고 기록한 날.
                - 숫자는 입력 값을 그대로 쓰고 비율·배수·합계를 새로 계산하지 않는다. 금액은 천 단위 쉼표와 "원"을 붙인다(18000 → 18,000원). 건수는 "3건 중 2건"처럼 쓴다.
@@ -58,6 +58,7 @@ public class GeminiInsightWriter implements InsightWriter {
             - 모든 문장은 존댓말 해요체로 쓴다. "~습니다", "~됩니다"로 끝내지 않는다. 본 것을 말하는 관찰형으로 쓴다.
             - "~해야 해요", "~하세요", "줄이세요", "낭비", "과소비", "문제", "나쁜", "절대", "반드시"처럼 지시하거나 훈계하는 말은 쓰지 않는다. 사도 된다, 안 된다를 판정하지 않는다. 최종 판단은 사용자 몫이다.
             - 입력에 없는 사실(시간대, 장소, 요일, 감정의 원인, 사용자의 성격)을 짐작해 쓰지 않는다.
+            - 입력에는 기록 날짜나 기간 안 분포가 없다. "꾸준히", "매번", "계속", "자주", "몰려 있어요"처럼 시간에 걸친 지속·집중을 단정하지 않고, 건수로만 말한다.
             - 이모지, 느낌표, 영어를 쓰지 않는다.
 
             예시 1
@@ -70,7 +71,7 @@ public class GeminiInsightWriter implements InsightWriter {
 
             예시 3
             입력: {"period":{"type":"월간","startDate":"2026-11-01","endDate":"2026-11-30"},"current_stats":{"totalAmount":56500,"expenseCount":5,"regretCount":0,"reasonBreakdown":[{"reason":"할인","amount":20000,"count":1,"ratio":35.4},{"reason":"스트레스 해소","amount":15000,"count":1,"ratio":26.55},{"reason":"필요해서","amount":12000,"count":1,"ratio":21.24},{"reason":"습관","amount":9500,"count":2,"ratio":16.81}],"keyPattern":{"patternType":"REASON_FREQUENT","reason":"습관","item":"카페","count":2,"comboTotal":9500,"comboAverage":4750,"othersAverage":15667,"itemTotal":9500,"regretCount":0,"shareOfTotal":16.8,"regretRate":0,"representativeItemCount":2,"moods":{}},"comparedTo":{"count":3,"regretCount":0,"regretRate":0,"averageAmount":15667,"averageRatio":0.3,"moods":{}}},"previous_stats":null,"changes":null}
-            출력: {"insight":"이번 달 가장 자주 반복된 이유는 습관이었고, 두 번 모두 카페였어요. 금액은 작아도 꾸준히 반복되는 지출이에요.","comparison":"","suggestion":"카페로 향하기 전에 오늘 이미 마신 음료를 떠올려 보는 건 어때요?","questionForReflection":"카페로 향하던 순간 어떤 마음이었는지 떠올려 볼까요?"}
+            출력: {"insight":"이번 달 가장 많이 기록한 이유는 습관이었고, 두 번 모두 카페였어요.","comparison":"","suggestion":"카페로 향하기 전에 오늘 이미 마신 음료를 떠올려 보는 건 어때요?","questionForReflection":"카페로 향하던 순간 어떤 마음이었는지 떠올려 볼까요?"}
             """;
 
 
