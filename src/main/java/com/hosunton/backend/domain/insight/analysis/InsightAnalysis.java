@@ -1,7 +1,6 @@
 package com.hosunton.backend.domain.insight.analysis;
 
 import com.hosunton.backend.domain.expense.ExpenseItem;
-import com.hosunton.backend.domain.expense.ExpenseMood;
 import com.hosunton.backend.domain.expense.ExpenseReason;
 
 import java.time.LocalDate;
@@ -13,7 +12,7 @@ import java.util.Map;
  *
  * @param previous 직전 기간에 기록이 없으면 null (비교 문구를 숨긴다)
  * @param pattern  조건을 만족하는 패턴이 없으면 null
- * @param contrast 핵심 패턴과 나머지 기록의 대비. pattern 이 null 이면 null
+ * @param findings 핵심 패턴에서 찾은 발견(계기→결과), 강한 순. pattern 이 null 이면 빈 목록
  */
 public record InsightAnalysis(
         long totalAmount,
@@ -23,7 +22,7 @@ public record InsightAnalysis(
         List<TrendPoint> trend,
         PreviousSummary previous,
         Pattern pattern,
-        PatternContrast contrast
+        List<Finding> findings
 ) {
 
     public boolean hasPattern() {
@@ -40,16 +39,34 @@ public record InsightAnalysis(
     }
 
     /**
-     * 핵심 패턴 기록과 비교 대상 기록의 대비. 비교 대상은 ITEM_AMOUNT 면 같은 항목의 다른 이유 기록, 그 외는 다른 이유 기록이다.
+     * 핵심 패턴 기록에서 찾은 발견 하나. 사용자가 "언제·어떤 마음일 때 → 어떻게 됐는지"를 알아차리고
+     * 다음에 바꿔 볼 지점을 찾게 하는 재료다. 숫자·라벨은 모두 코드가 계산하고 LLM 은 문장으로만 쓴다.
      *
-     * @param othersCount             비교 대상 기록 수
-     * @param othersRegretCount       비교 대상 중 후회한 기록 수
-     * @param representativeItemCount 패턴 기록 중 대표 항목(pattern.item) 기록 수
-     * @param patternMoods            패턴 기록의 기분별 건수 (기분을 입력한 기록만)
-     * @param othersMoods             비교 대상 기록의 기분별 건수
+     * @param strength 0~100. 클수록 사용자가 몰랐을 법하고 바꿀 지점이 분명한 발견이다
+     * @param facts    발견의 근거 값 (숫자, 또는 ExpenseMood·ExpenseReason·ExpenseItem·DayOfWeek·문자열)
      */
-    public record PatternContrast(int othersCount, int othersRegretCount, int representativeItemCount,
-                                  Map<ExpenseMood, Integer> patternMoods, Map<ExpenseMood, Integer> othersMoods) {
+    public record Finding(FindingType type, int strength, Map<String, Object> facts) {
+    }
+
+    public enum FindingType {
+        /** 이유에 담긴 의도와 결과가 어긋남 (아끼려던 할인이 더 비쌈, 기분을 풀려던 소비가 후회로 남음) */
+        INTENT_BACKFIRE,
+        /** 이번 기간 후회의 대부분이 이 패턴에서 나옴 */
+        REGRET_CONCENTRATION,
+        /** 특정 기분으로 기록한 날의 소비가 대부분 이 패턴 */
+        MOOD_TRIGGER,
+        /** 이 패턴이 특정 요일이나 주말에 몰림 */
+        DAY_TRIGGER,
+        /** 한 번은 작지만 모이면 다른 가장 큰 단건 지출보다 큼 */
+        SMALL_ADDS_UP,
+        /** 기록 수 비중보다 금액 비중이 훨씬 큼 */
+        AMOUNT_WEIGHT,
+        /** 이 패턴의 후회율이 나머지보다 크게 높음 */
+        REGRET_GAP,
+        /** 나머지 중 후회가 하나도 없는 이유 (보조 발견: 대비용) */
+        SAFE_ZONE,
+        /** 위 발견이 없을 때 패턴 자체의 사실 */
+        BASIC
     }
 
     /** 주간은 날짜별, 월간은 주차별(주차의 그 달 안 첫날). */
