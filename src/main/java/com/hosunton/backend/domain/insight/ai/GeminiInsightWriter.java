@@ -23,22 +23,28 @@ public class GeminiInsightWriter implements InsightWriter {
             입력은 앱이 계산한 한 기간의 소비 통계 JSON 이다. 이 통계만 보고 아래 네 칸을 채운 JSON 하나만 출력한다.
             - current_stats.keyPattern: 이번 기간의 핵심 패턴. patternType 에 따라 뜻이 다르다.
               · ITEM_AMOUNT: reason 이유로 쓴 item 이 같은 항목의 다른 기록보다 건당 금액이 높은 조합. count 는 그 조합의 기록 수다.
-              · REASON_AMOUNT: reason 이유로 쓴 소비(항목 상관없음)가 다른 이유로 쓴 소비보다 건당 금액이 높다. count 는 그 이유의 기록 수, item 은 그 이유로 가장 많이 쓴 항목이다.
-              · REASON_REGRET: reason 이유로 쓴 소비 중 절반 이상을 후회했다. item 은 그 이유로 가장 많이 쓴 항목이다.
-              · REASON_FREQUENT: reason 이 이번 기간에 가장 자주 쓴 소비 이유다. item 은 그 이유로 가장 많이 쓴 항목이다.
-              regretCount 는 count 중 후회한 기록 수, shareOfTotal 은 그 패턴이 이번 기간 전체 지출에서 차지하는 비중(%)이다.
+              · REASON_AMOUNT: reason 이유로 쓴 소비(항목 상관없음)가 다른 이유로 쓴 소비보다 건당 금액이 높다.
+              · REASON_REGRET: reason 이유로 쓴 소비 중 절반 이상을 후회했다.
+              · REASON_FREQUENT: reason 이 이번 기간에 가장 자주 쓴 소비 이유다.
+              ITEM_AMOUNT 가 아니면 count 는 그 이유의 기록 수, item 은 그 이유로 가장 많이 쓴 대표 항목이다. representativeItemCount 는 패턴 기록 중 item 기록 수다.
+              regretCount·regretRate 는 패턴 기록 중 후회한 건수·비율(%), comboAverage 는 건당 평균 금액, shareOfTotal 은 이번 기간 전체 지출 중 비중(%), moods 는 사용자가 기록한 기분별 건수다(기분을 적지 않은 기록은 빠진다).
+            - current_stats.comparedTo: 패턴과 견줄 나머지 기록. ITEM_AMOUNT 면 같은 항목의 다른 이유 기록, 그 외는 다른 이유로 쓴 기록이다. count, regretCount, regretRate(%), averageAmount(건당 평균), averageRatio(패턴 건당 평균이 이 평균의 몇 배인지), moods 가 있다. 값이 없으면 null 이다.
             - changes: 직전 기간 대비 변화. 직전 기간 기록이 없으면 previous_stats 와 changes 는 null 이다.
 
-            1. insight: 핵심 패턴을 관찰하는 한 문장.
-               - 반드시 담는다(patternType 별):
-                 ITEM_AMOUNT → keyPattern.reason 이유로 쓴 keyPattern.item 이 다른 {item}보다 건당 금액이 높다는 사실. 비교 대상은 "다른 {item}"이라고 쓴다(예: 다른 배달 음식보다).
-                 REASON_AMOUNT → keyPattern.reason 이유로 쓴 소비가 다른 이유로 쓴 소비보다 건당 금액이 높다는 사실. 주로 {item}에 썼다는 말을 덧붙여도 된다.
-                 REASON_REGRET → regretCount 가 count 와 같으면 "keyPattern.reason 이유로 쓴 소비는 모두 후회했다", 아니면 "keyPattern.reason 이유로 쓴 소비에서 후회한 기록이 많았다" 중 하나만 쓴다. 두 표현을 겹쳐 쓰지 않는다. 주로 {item}에 썼다는 말을 덧붙여도 된다.
-                 REASON_FREQUENT → 이번 기간에 keyPattern.reason 이유로 쓴 소비가 가장 잦았다는 사실. 주로 {item}에 썼다는 말을 덧붙여도 된다.
-               - ITEM_AMOUNT 와 REASON_AMOUNT 는 관찰을 하나까지 덧붙일 수 있다. regretCount 가 count 와 같으면 "모두 후회했다", regretCount 가 1 이상이면 "후회한 기록도 있었다", regretCount 가 0 이고 shareOfTotal 이 30 이상이면 "이번 기간 지출에서 큰 몫을 차지했다". 해당하는 게 없으면 덧붙이지 않는다.
+            1. insight: 이 사람의 소비에서 가장 눈에 띄는 대비를 짚어, 스스로 "아, 그랬구나" 하고 알아차리게 하는 두 문장 이내의 관찰.
+               - 담는 사실은 두 문장을 합쳐 **두 가지까지만**이다. 아래 대비 중 해당하는 것을 우선순위대로 골라 쓴다. 사실을 세 가지 이상 늘어놓지 않는다.
+                 · 후회 대비: keyPattern.regretRate 가 comparedTo.regretRate 보다 30 이상 높다 → "3건 중 2건을 후회했는데, 다른 이유로 쓴 소비는 후회가 없었어요"처럼. 단, ITEM_AMOUNT 면 comparedTo 가 같은 항목의 다른 이유 기록뿐이므로 "다른 {item}은 후회가 없었어요"(예: 다른 배달 음식은)라고 쓰고 "다른 이유로 쓴 소비"라고 쓰지 않는다. regretCount 가 count 와 같으면 "2건 중 2건"이라고 쓰지 않고 "2건 모두 후회했는데"처럼 쓴다.
+                 · 기분: keyPattern.moods 에 같은 기분이 2건 이상이다 → 그 건수가 count 와 같으면 "두 번 모두 지친다고 기록한 날이었어요"(세 번이면 "세 번 모두"), 아니면 "그중 2건은 지친다고 기록한 날이었어요"처럼.
+                 · 금액 대비: comparedTo.averageRatio 가 1.5 이상이다 → "건당 평균 18,000원으로 다른 이유로 쓴 소비의 2.2배였어요"처럼. 단, ITEM_AMOUNT 면 "다른 {item}의 2.2배"(예: 다른 배달 음식의)라고 쓰고 "다른 이유로 쓴 소비"라고 쓰지 않는다.
+                 · 반복: representativeItemCount 가 count 와 같고 2 이상이다 → "두 번 모두 카페였어요"처럼.
+               - 첫 문장: 주어는 keyPattern 의 이유(와 항목)로 하고, 가장 우선하는 대비 하나를 숫자와 함께 쓴다. 해당하는 대비가 없으면 아래 patternType 사실을 쓴다.
+               - 두 번째 문장(선택): 다음 대비 하나, 또는 대비가 하나뿐이면 그 대비가 보여 주는 모습을 담담하게 한마디로 쓴다. 예: "지친다고 기록한 날에 이 소비가 몰려 있어요.", "금액은 작아도 꾸준히 반복되는 지출이에요." 원인이나 속마음을 단정하지 않는다("스트레스 때문에", "외로워서", "보상 심리로" 같은 말 금지).
+               - patternType 사실 표현(대비가 없을 때): ITEM_AMOUNT → "{이유} {item}은 다른 {item}보다 건당 금액이 높았어요"(비교 대상은 "다른 {item}"). REASON_AMOUNT → "{이유} 쓴 소비는 다른 이유보다 건당 금액이 높았어요". REASON_REGRET → 후회 사실(regretCount 가 count 와 같으면 "모두 후회했어요"). REASON_FREQUENT → "{이유} 쓴 소비가 가장 잦았어요". 같은 뜻을 두 번 쓰지 않는다.
                - 이유는 자연스러운 말로 풀어 쓴다(필요해서 → 필요해서, 스트레스 해소 → 스트레스를 풀려고, 할인 → 할인을 보고, 충동 → 즉흥적으로, 보상 → 나에게 주는 보상으로, 습관 → 습관처럼).
+               - 기분은 사용자가 적은 것임을 드러낸다: 좋음 → 기분이 좋다고 기록한 날, 보통 → 보통이라고 기록한 날, 지침 → 지친다고 기록한 날, 우울 → 우울하다고 기록한 날.
+               - 숫자는 입력 값을 그대로 쓰고 비율·배수·합계를 새로 계산하지 않는다. 금액은 천 단위 쉼표와 "원"을 붙인다(18000 → 18,000원). 건수는 "3건 중 2건"처럼 쓴다.
                - "다른 항목", "다른 기록", "다른 지출"처럼 뭉뚱그려 쓰지 않는다.
-               - 70자 이내, 마침표로 끝낸다.
+               - 90자 이내, 마침표로 끝낸다.
             2. comparison: previous_stats 가 null 이면 빈 문자열 "" 을 넣는다. 아니면 아래 순서로 처음 해당하는 변화 하나만 쓴다. period.type 이 "월간"이면 "지난달", "주간"이면 "지난주"라고 부른다.
                ① changes.keyReasonChangePercentagePoint 가 null 이 아니고 절댓값이 5 이상이면: "지난달보다 {이유} 소비 비중이 N%p 늘었어요" 또는 "줄었어요". {이유}는 keyPattern.reason 이다(필요해서 → 필요해서 쓴, 그 외는 이름 그대로: 스트레스 해소, 할인, 충동, 보상, 습관).
                ② changes.regretCountChange 가 0 이 아니면: "지난달보다 후회한 소비가 N건 늘었어요" 또는 "줄었어요".
@@ -48,23 +54,23 @@ public class GeminiInsightWriter implements InsightWriter {
             4. questionForReflection: 그 소비를 했던 때의 마음이나 상황을 스스로 떠올려 보게 하는 열린 질문 하나. 후회한 기록이 있으면 후회한 소비와 만족한 소비가 무엇이 달랐는지 떠올리게 해도 좋다. "~떠올려 볼까요?", "~돌아볼까요?", "어떤 ~이었나요?"처럼 쓴다. "정말 ~했나요", "실제로", "~지 않았나요"처럼 의심하거나 캐묻는 말투는 쓰지 않는다. "?"로 끝낸다. 45자 이내.
 
             지킬 것
-            - insight, suggestion, questionForReflection 에는 숫자를 쓰지 않는다(금액, 건수, 퍼센트, 시간 모두). 숫자는 comparison 에만 쓴다.
+            - suggestion, questionForReflection 에는 숫자를 쓰지 않는다. 숫자는 insight 와 comparison 에만, 입력에 있는 값만 쓴다.
             - 모든 문장은 존댓말 해요체로 쓴다. "~습니다", "~됩니다"로 끝내지 않는다. 본 것을 말하는 관찰형으로 쓴다.
             - "~해야 해요", "~하세요", "줄이세요", "낭비", "과소비", "문제", "나쁜", "절대", "반드시"처럼 지시하거나 훈계하는 말은 쓰지 않는다. 사도 된다, 안 된다를 판정하지 않는다. 최종 판단은 사용자 몫이다.
             - 입력에 없는 사실(시간대, 장소, 요일, 감정의 원인, 사용자의 성격)을 짐작해 쓰지 않는다.
             - 이모지, 느낌표, 영어를 쓰지 않는다.
 
             예시 1
-            입력: {"period":{"type":"월간","startDate":"2026-10-01","endDate":"2026-10-31"},"current_stats":{"totalAmount":196000,"expenseCount":12,"regretCount":3,"reasonBreakdown":[{"reason":"스트레스 해소","amount":78000,"count":3,"ratio":39.8},{"reason":"필요해서","amount":118000,"count":9,"ratio":60.2}],"keyPattern":{"patternType":"ITEM_AMOUNT","reason":"스트레스 해소","item":"배달 음식","count":3,"comboTotal":78000,"comboAverage":26000,"othersAverage":14000,"itemTotal":120000,"regretCount":2,"shareOfTotal":39.8}},"previous_stats":{"totalAmount":181000,"regretCount":2},"changes":{"totalAmountChangeRate":8.3,"regretCountChange":1,"reasonRatioChanges":[{"reason":"스트레스 해소","changePercentagePoint":11.4}],"keyReasonChangePercentagePoint":11.4}}
-            출력: {"insight":"스트레스를 풀려고 시킨 배달 음식은 다른 배달 음식보다 건당 금액이 높고, 후회한 기록도 있었어요.","comparison":"지난달보다 스트레스 해소 소비 비중이 11.4%p 늘었어요","suggestion":"배달 앱을 열기 전에 지금 기분을 한 단어로 적어 보는 건 어때요?","questionForReflection":"후회한 배달과 괜찮았던 배달은 어떤 점이 달랐나요?"}
+            입력: {"period":{"type":"월간","startDate":"2026-10-01","endDate":"2026-10-31"},"current_stats":{"totalAmount":196000,"expenseCount":12,"regretCount":3,"reasonBreakdown":[{"reason":"스트레스 해소","amount":78000,"count":3,"ratio":39.8},{"reason":"필요해서","amount":118000,"count":9,"ratio":60.2}],"keyPattern":{"patternType":"ITEM_AMOUNT","reason":"스트레스 해소","item":"배달 음식","count":3,"comboTotal":78000,"comboAverage":26000,"othersAverage":14000,"itemTotal":120000,"regretCount":2,"shareOfTotal":39.8,"regretRate":67,"representativeItemCount":3,"moods":{"지침":2}},"comparedTo":{"count":3,"regretCount":0,"regretRate":0,"averageAmount":14000,"averageRatio":1.9,"moods":{"보통":1}}},"previous_stats":{"totalAmount":181000,"regretCount":2},"changes":{"totalAmountChangeRate":8.3,"regretCountChange":1,"reasonRatioChanges":[{"reason":"스트레스 해소","changePercentagePoint":11.4}],"keyReasonChangePercentagePoint":11.4}}
+            출력: {"insight":"스트레스를 풀려고 시킨 배달 음식 3건 중 2건을 후회했는데, 다른 배달 음식은 후회가 없었어요. 그중 2건은 지친다고 기록한 날이었어요.","comparison":"지난달보다 스트레스 해소 소비 비중이 11.4%p 늘었어요","suggestion":"배달 앱을 열기 전에 지금 기분을 한 단어로 적어 보는 건 어때요?","questionForReflection":"후회한 배달과 괜찮았던 배달은 어떤 점이 달랐나요?"}
 
             예시 2
-            입력: {"period":{"type":"주간","startDate":"2026-10-12","endDate":"2026-10-18"},"current_stats":{"totalAmount":98000,"expenseCount":5,"regretCount":0,"reasonBreakdown":[{"reason":"할인","amount":64000,"count":2,"ratio":65.31},{"reason":"필요해서","amount":34000,"count":3,"ratio":34.69}],"keyPattern":{"patternType":"ITEM_AMOUNT","reason":"할인","item":"쇼핑","count":2,"comboTotal":64000,"comboAverage":32000,"othersAverage":21000,"itemTotal":85000,"regretCount":0,"shareOfTotal":65.3}},"previous_stats":null,"changes":null}
-            출력: {"insight":"할인을 보고 산 쇼핑은 다른 쇼핑보다 건당 금액이 높고, 이번 주 지출에서 큰 몫을 차지했어요.","comparison":"","suggestion":"결제하기 전에 장바구니에 담아 두고 하루 뒤에 다시 보는 건 어때요?","questionForReflection":"할인이 없었어도 그 물건을 골랐을지 떠올려 볼까요?"}
+            입력: {"period":{"type":"주간","startDate":"2026-10-12","endDate":"2026-10-18"},"current_stats":{"totalAmount":98000,"expenseCount":5,"regretCount":0,"reasonBreakdown":[{"reason":"할인","amount":64000,"count":2,"ratio":65.31},{"reason":"필요해서","amount":34000,"count":3,"ratio":34.69}],"keyPattern":{"patternType":"ITEM_AMOUNT","reason":"할인","item":"쇼핑","count":2,"comboTotal":64000,"comboAverage":32000,"othersAverage":21000,"itemTotal":85000,"regretCount":0,"shareOfTotal":65.3,"regretRate":0,"representativeItemCount":2,"moods":{"좋음":2}},"comparedTo":{"count":1,"regretCount":0,"regretRate":0,"averageAmount":21000,"averageRatio":1.5,"moods":{}}},"previous_stats":null,"changes":null}
+            출력: {"insight":"할인을 보고 산 쇼핑은 건당 평균 32,000원으로 다른 쇼핑의 1.5배였어요. 두 번 모두 기분이 좋다고 기록한 날이었어요.","comparison":"","suggestion":"결제하기 전에 장바구니에 담아 두고 하루 뒤에 다시 보는 건 어때요?","questionForReflection":"할인이 없었어도 그 물건을 골랐을지 떠올려 볼까요?"}
 
             예시 3
-            입력: {"period":{"type":"월간","startDate":"2026-11-01","endDate":"2026-11-30"},"current_stats":{"totalAmount":61000,"expenseCount":5,"regretCount":2,"reasonBreakdown":[{"reason":"충동","amount":36000,"count":2,"ratio":59.02},{"reason":"필요해서","amount":16000,"count":2,"ratio":26.23},{"reason":"습관","amount":9000,"count":1,"ratio":14.75}],"keyPattern":{"patternType":"REASON_AMOUNT","reason":"충동","item":"쇼핑","count":2,"comboTotal":36000,"comboAverage":18000,"othersAverage":8333,"itemTotal":30000,"regretCount":2,"shareOfTotal":59.0}},"previous_stats":null,"changes":null}
-            출력: {"insight":"즉흥적으로 쓴 소비는 다른 이유로 쓴 소비보다 건당 금액이 높았고, 모두 후회했어요.","comparison":"","suggestion":"결제 버튼을 누르기 전에 잠시 화면을 닫고 숨을 고르는 건 어때요?","questionForReflection":"그 물건을 고르던 순간 어떤 마음이 들었는지 떠올려 볼까요?"}
+            입력: {"period":{"type":"월간","startDate":"2026-11-01","endDate":"2026-11-30"},"current_stats":{"totalAmount":56500,"expenseCount":5,"regretCount":0,"reasonBreakdown":[{"reason":"할인","amount":20000,"count":1,"ratio":35.4},{"reason":"스트레스 해소","amount":15000,"count":1,"ratio":26.55},{"reason":"필요해서","amount":12000,"count":1,"ratio":21.24},{"reason":"습관","amount":9500,"count":2,"ratio":16.81}],"keyPattern":{"patternType":"REASON_FREQUENT","reason":"습관","item":"카페","count":2,"comboTotal":9500,"comboAverage":4750,"othersAverage":15667,"itemTotal":9500,"regretCount":0,"shareOfTotal":16.8,"regretRate":0,"representativeItemCount":2,"moods":{}},"comparedTo":{"count":3,"regretCount":0,"regretRate":0,"averageAmount":15667,"averageRatio":0.3,"moods":{}}},"previous_stats":null,"changes":null}
+            출력: {"insight":"이번 달 가장 자주 반복된 이유는 습관이었고, 두 번 모두 카페였어요. 금액은 작아도 꾸준히 반복되는 지출이에요.","comparison":"","suggestion":"카페로 향하기 전에 오늘 이미 마신 음료를 떠올려 보는 건 어때요?","questionForReflection":"카페로 향하던 순간 어떤 마음이었는지 떠올려 볼까요?"}
             """;
 
 
