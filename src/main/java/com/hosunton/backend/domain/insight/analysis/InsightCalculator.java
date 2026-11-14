@@ -2,6 +2,7 @@ package com.hosunton.backend.domain.insight.analysis;
 
 import com.hosunton.backend.domain.expense.Expense;
 import com.hosunton.backend.domain.expense.ExpenseItem;
+import com.hosunton.backend.domain.expense.ExpenseMood;
 import com.hosunton.backend.domain.expense.ExpenseReason;
 import com.hosunton.backend.domain.insight.PeriodType;
 
@@ -33,6 +34,7 @@ public final class InsightCalculator {
      */
     public static InsightAnalysis analyze(PeriodType type, LocalDate periodStart,
                                           List<Expense> current, List<Expense> previous) {
+        InsightAnalysis.Pattern pattern = findKeyPattern(current);
         long total = sum(current);
         long previousTotal = sum(previous);
         int regretCount = (int) current.stream().filter(Expense::isRegret).count();
@@ -50,8 +52,39 @@ public final class InsightCalculator {
                 reasonBreakdown(current, total, previous.isEmpty() ? null : previous, previousTotal),
                 trend(type, periodStart, current),
                 previousSummary,
-                findKeyPattern(current)
+                pattern,
+                pattern == null ? null : contrast(pattern, current)
         );
+    }
+
+    /** 핵심 패턴 기록과 비교 대상 기록의 후회·기분·대표 항목 건수를 센다. */
+    static InsightAnalysis.PatternContrast contrast(InsightAnalysis.Pattern p, List<Expense> current) {
+        boolean byItem = p.type() == InsightAnalysis.PatternType.ITEM_AMOUNT;
+        Map<ExpenseMood, Integer> patternMoods = new EnumMap<>(ExpenseMood.class);
+        Map<ExpenseMood, Integer> othersMoods = new EnumMap<>(ExpenseMood.class);
+        int othersCount = 0;
+        int othersRegret = 0;
+        int representative = 0;
+        for (Expense e : current) {
+            boolean sameScope = !byItem || e.getItem() == p.item();
+            if (sameScope && e.getReason() == p.reason()) {
+                if (e.getItem() == p.item()) {
+                    representative++;
+                }
+                if (e.getMood() != null) {
+                    patternMoods.merge(e.getMood(), 1, Integer::sum);
+                }
+            } else if (sameScope) {
+                othersCount++;
+                if (e.isRegret()) {
+                    othersRegret++;
+                }
+                if (e.getMood() != null) {
+                    othersMoods.merge(e.getMood(), 1, Integer::sum);
+                }
+            }
+        }
+        return new InsightAnalysis.PatternContrast(othersCount, othersRegret, representative, patternMoods, othersMoods);
     }
 
     // ===== 이유별 비중 =====
