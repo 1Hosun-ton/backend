@@ -85,7 +85,8 @@ public final class InsightCalculator {
             found.add(finding(InsightAnalysis.FindingType.INTENT_BACKFIRE, 88,
                     "count", count, "average", p.comboAverage(), "othersAverage", p.othersAverage(),
                     "averageRatio", ratio(p.comboAverage(), p.othersAverage()),
-                    "highestAverageAmongReasons", isHighestAverage(p.reason(), current)));
+                    // ITEM_AMOUNT 는 같은 항목 안에서만 비교했으므로 이유 전체 기준의 "가장 비싼"을 허용하지 않는다.
+                    "highestAverageAmongReasons", !byItem && isHighestAverage(p.reason(), current)));
         } else if (p.reason() != ExpenseReason.DISCOUNT && p.reason() != ExpenseReason.HABIT
                 && mineRegret >= 2 && mineRegret * 2 >= count) {
             found.add(finding(InsightAnalysis.FindingType.INTENT_BACKFIRE, p.reason() == ExpenseReason.NEED ? 70 : 86,
@@ -121,10 +122,10 @@ public final class InsightCalculator {
             found.add(day);
         }
 
-        // 한 번은 작아도 모이면 큼
+        // 한 번은 작아도 모이면 큼 (같으면 "넘었다"고 할 수 없어 제외)
         long mineTotal = sum(mine);
         Expense biggestOther = others.stream().max(Comparator.comparingInt(Expense::getAmount)).orElse(null);
-        if (count >= 3 && p.comboAverage() <= 10_000 && biggestOther != null && mineTotal >= biggestOther.getAmount()) {
+        if (count >= 3 && p.comboAverage() <= 10_000 && biggestOther != null && mineTotal > biggestOther.getAmount()) {
             found.add(finding(InsightAnalysis.FindingType.SMALL_ADDS_UP, p.reason() == ExpenseReason.HABIT ? 76 : 58,
                     "count", count, "total", mineTotal, "average", p.comboAverage(),
                     "biggestOtherItem", biggestOther.getItem(), "biggestOtherAmount", biggestOther.getAmount()));

@@ -329,7 +329,9 @@ public class InsightNarrator {
             switch (top.type()) {
                 case INTENT_BACKFIRE -> {
                     if (p.reason() == ExpenseReason.DISCOUNT) {
-                        return "할인을 보고 산 소비가 오히려 건당 금액이 더 컸어요.";
+                        return p.type() == InsightAnalysis.PatternType.ITEM_AMOUNT
+                                ? "할인을 보고 산 %s는 다른 %s보다 건당 금액이 더 컸어요.".formatted(item, item)
+                                : "할인을 보고 산 소비가 다른 이유로 쓴 소비보다 건당 금액이 더 컸어요.";
                     }
                     return "%s %s건 중 %s건이 후회로 남았어요.".formatted(subject, f.get("count"), f.get("regretCount"));
                 }
@@ -338,7 +340,7 @@ public class InsightNarrator {
                             f.get("totalRegretCount"), f.get("regretCount"), subject);
                 }
                 case MOOD_TRIGGER -> {
-                    return "%s 날의 소비는 대부분 %s였어요.".formatted(moodPhrase((ExpenseMood) f.get("mood")), subject);
+                    return "%s 소비는 대부분 %s였어요.".formatted(moodPhrase((ExpenseMood) f.get("mood")), subject);
                 }
                 case DAY_TRIGGER -> {
                     Object day = f.get("day");
