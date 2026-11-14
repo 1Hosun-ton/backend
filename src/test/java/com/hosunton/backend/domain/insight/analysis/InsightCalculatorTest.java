@@ -2,14 +2,18 @@ package com.hosunton.backend.domain.insight.analysis;
 
 import com.hosunton.backend.domain.expense.Expense;
 import com.hosunton.backend.domain.expense.ExpenseItem;
+import com.hosunton.backend.domain.expense.ExpenseMood;
 import com.hosunton.backend.domain.expense.ExpenseReason;
 import com.hosunton.backend.domain.insight.PeriodType;
 import org.junit.jupiter.api.Test;
 
+import java.time.DayOfWeek;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 
+import static com.hosunton.backend.domain.expense.ExpenseMood.DEPRESSED;
+import static com.hosunton.backend.domain.expense.ExpenseMood.NORMAL;
 import static com.hosunton.backend.domain.expense.ExpenseItem.CAFE;
 import static com.hosunton.backend.domain.expense.ExpenseItem.DELIVERY;
 import static com.hosunton.backend.domain.expense.ExpenseItem.FOOD;
@@ -22,7 +26,7 @@ import static com.hosunton.backend.domain.expense.ExpenseReason.REWARD;
 import static com.hosunton.backend.domain.expense.ExpenseReason.STRESS;
 import static org.assertj.core.api.Assertions.assertThat;
 
-/** 패턴 후보 기준(2건 이상 + 20% 이상)의 경계값만 확인한다. */
+/** 패턴 후보 기준(2건 이상 + 20% 이상)의 경계값과 발견 계산을 확인한다. */
 class InsightCalculatorTest {
 
     private static final LocalDate START = LocalDate.of(2026, 11, 1);
@@ -35,24 +39,57 @@ class InsightCalculatorTest {
         return Expense.create(1L, START, item, amount, reason, true, null, null, Instant.EPOCH);
     }
 
+    private static Expense on(int day, ExpenseItem item, ExpenseReason reason, int amount, boolean regret, ExpenseMood mood) {
+        return Expense.create(1L, LocalDate.of(2026, 6, day), item, amount, reason, regret, mood, null, Instant.EPOCH);
+    }
+
+    private static InsightAnalysis.Finding find(List<InsightAnalysis.Finding> findings, InsightAnalysis.FindingType type) {
+        return findings.stream().filter(f -> f.type() == type).findFirst().orElse(null);
+    }
+
     @Test
-    void 패턴과_다른_이유_기록의_후회와_기분을_따로_센다() {
+    void 후회가_몰린_곳과_기분_요일_계기를_찾는다() {
+        // 2026-06-05·12·19 는 금요일. 충동 쇼핑 3건 모두 후회, 우울 2건. 필요해서 3건은 후회 없음.
         List<Expense> current = List.of(
-                Expense.create(1L, START, DELIVERY, 9000, STRESS, true, com.hosunton.backend.domain.expense.ExpenseMood.TIRED, null, Instant.EPOCH),
-                Expense.create(1L, START, DELIVERY, 9000, STRESS, true, com.hosunton.backend.domain.expense.ExpenseMood.TIRED, null, Instant.EPOCH),
-                Expense.create(1L, START, CAFE, 9000, STRESS, false, null, null, Instant.EPOCH),
-                e(FOOD, NEED, 9000), regret(SHOPPING, REWARD, 9000));
-        InsightAnalysis.Pattern p = InsightCalculator.findKeyPattern(current); // 스트레스 3건 중 2건 후회 → REASON_REGRET
+                on(5, SHOPPING, IMPULSE, 32000, true, DEPRESSED), on(12, SHOPPING, IMPULSE, 27000, true, DEPRESSED),
+                on(19, SHOPPING, IMPULSE, 41000, true, null),
+                on(2, FOOD, NEED, 9000, false, null), on(9, FOOD, NEED, 8000, false, NORMAL), on(16, FOOD, NEED, 9500, false, null));
+        InsightAnalysis.Pattern p = InsightCalculator.findKeyPattern(current);
 
-        InsightAnalysis.PatternContrast c = InsightCalculator.contrast(p, current);
+        List<InsightAnalysis.Finding> f = InsightCalculator.findings(p, current);
 
-        assertThat(p.type()).isEqualTo(InsightAnalysis.PatternType.REASON_REGRET);
-        assertThat(p.item()).isEqualTo(DELIVERY);
-        assertThat(c.representativeItemCount()).isEqualTo(2);
-        assertThat(c.othersCount()).isEqualTo(2);
-        assertThat(c.othersRegretCount()).isEqualTo(1);
-        assertThat(c.patternMoods()).containsEntry(com.hosunton.backend.domain.expense.ExpenseMood.TIRED, 2);
-        assertThat(c.othersMoods()).isEmpty();
+        assertThat(f.getFirst().type()).isEqualTo(InsightAnalysis.FindingType.REGRET_CONCENTRATION);
+        assertThat(f.getLast().type()).isEqualTo(InsightAnalysis.FindingType.BASIC);
+        assertThat(find(f, InsightAnalysis.FindingType.REGRET_CONCENTRATION).facts())
+                .containsEntry("regretCount", 3).containsEntry("totalRegretCount", 3);
+        assertThat(find(f, InsightAnalysis.FindingType.MOOD_TRIGGER).facts())
+                .containsEntry("mood", DEPRESSED).containsEntry("moodCount", 2);
+        assertThat(find(f, InsightAnalysis.FindingType.DAY_TRIGGER).facts()).containsEntry("day", DayOfWeek.FRIDAY);
+        assertThat(find(f, InsightAnalysis.FindingType.SAFE_ZONE).facts()).containsEntry("reason", NEED).containsEntry("count", 3);
+    }
+
+    @Test
+    void 할인이_더_비싸거나_작은_금액이_모이면_발견이다() {
+        List<Expense> discount = List.of(
+                on(6, SHOPPING, DISCOUNT, 25000, false, NORMAL), on(14, SHOPPING, DISCOUNT, 12500, false, NORMAL),
+                on(21, CAFE, DISCOUNT, 5000, false, null),
+                on(3, FOOD, NEED, 8000, false, null), on(10, CAFE, HABIT, 5000, false, null),
+                on(17, DELIVERY, STRESS, 9000, false, null), on(24, FOOD, NEED, 6500, false, null));
+        InsightAnalysis.Finding backfire = InsightCalculator.findings(InsightCalculator.findKeyPattern(discount), discount).getFirst();
+        assertThat(backfire.type()).isEqualTo(InsightAnalysis.FindingType.INTENT_BACKFIRE);
+        assertThat(backfire.facts()).containsEntry("highestAverageAmongReasons", true).containsEntry("averageRatio", 2.0);
+        // 보통 기분은 계기로 쓰지 않는다
+        assertThat(find(InsightCalculator.findings(InsightCalculator.findKeyPattern(discount), discount),
+                InsightAnalysis.FindingType.MOOD_TRIGGER)).isNull();
+
+        // 습관 카페 5건 23,500원 ≥ 나머지 가장 큰 한 번 18,000원
+        List<Expense> habit = List.of(
+                on(4, CAFE, HABIT, 4500, false, null), on(6, CAFE, HABIT, 4800, false, null), on(11, CAFE, HABIT, 4500, false, null),
+                on(13, CAFE, HABIT, 5200, false, null), on(18, CAFE, HABIT, 4500, false, null),
+                on(9, SHOPPING, NEED, 18000, false, null), on(23, DELIVERY, REWARD, 16000, false, null));
+        InsightAnalysis.Finding small = InsightCalculator.findings(InsightCalculator.findKeyPattern(habit), habit).getFirst();
+        assertThat(small.type()).isEqualTo(InsightAnalysis.FindingType.SMALL_ADDS_UP);
+        assertThat(small.facts()).containsEntry("total", 23500L).containsEntry("biggestOtherAmount", 18000);
     }
 
     @Test

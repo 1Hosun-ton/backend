@@ -8,10 +8,12 @@ import com.hosunton.backend.domain.insight.PeriodType;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.EnumMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -53,38 +55,165 @@ public final class InsightCalculator {
                 trend(type, periodStart, current),
                 previousSummary,
                 pattern,
-                pattern == null ? null : contrast(pattern, current)
+                pattern == null ? List.of() : findings(pattern, current)
         );
     }
 
-    /** 핵심 패턴 기록과 비교 대상 기록의 후회·기분·대표 항목 건수를 센다. */
-    static InsightAnalysis.PatternContrast contrast(InsightAnalysis.Pattern p, List<Expense> current) {
+    // ===== 발견 (계기 → 결과) =====
+
+    /**
+     * 핵심 패턴 기록에서 사용자가 돌아보고 바꿔 볼 만한 발견을 찾아 강한 순으로 돌려준다. 마지막은 항상 BASIC 이다.
+     * 패턴 기록은 ITEM_AMOUNT 면 이유×항목, 그 외는 그 이유의 기록이고, 나머지는 이번 기간의 다른 기록 전부다.
+     */
+    public static List<InsightAnalysis.Finding> findings(InsightAnalysis.Pattern p, List<Expense> current) {
         boolean byItem = p.type() == InsightAnalysis.PatternType.ITEM_AMOUNT;
-        Map<ExpenseMood, Integer> patternMoods = new EnumMap<>(ExpenseMood.class);
-        Map<ExpenseMood, Integer> othersMoods = new EnumMap<>(ExpenseMood.class);
-        int othersCount = 0;
-        int othersRegret = 0;
-        int representative = 0;
+        List<Expense> mine = new ArrayList<>();
+        List<Expense> others = new ArrayList<>();
         for (Expense e : current) {
-            boolean sameScope = !byItem || e.getItem() == p.item();
-            if (sameScope && e.getReason() == p.reason()) {
-                if (e.getItem() == p.item()) {
-                    representative++;
-                }
-                if (e.getMood() != null) {
-                    patternMoods.merge(e.getMood(), 1, Integer::sum);
-                }
-            } else if (sameScope) {
-                othersCount++;
-                if (e.isRegret()) {
-                    othersRegret++;
-                }
-                if (e.getMood() != null) {
-                    othersMoods.merge(e.getMood(), 1, Integer::sum);
-                }
+            boolean inPattern = e.getReason() == p.reason() && (!byItem || e.getItem() == p.item());
+            (inPattern ? mine : others).add(e);
+        }
+        int count = mine.size();
+        long mineRegret = regretCount(mine);
+        long othersRegret = regretCount(others);
+        long totalRegret = mineRegret + othersRegret;
+        List<InsightAnalysis.Finding> found = new ArrayList<>();
+
+        // 의도와 결과의 어긋남: 아끼려던 할인이 더 비쌈 / 기분을 풀려던·필요했던·즉흥 소비가 후회로 남음
+        if (p.reason() == ExpenseReason.DISCOUNT && p.othersAverage() > 0
+                && p.comboAverage() * 10 >= p.othersAverage() * 13) {
+            found.add(finding(InsightAnalysis.FindingType.INTENT_BACKFIRE, 88,
+                    "count", count, "average", p.comboAverage(), "othersAverage", p.othersAverage(),
+                    "averageRatio", ratio(p.comboAverage(), p.othersAverage()),
+                    "highestAverageAmongReasons", isHighestAverage(p.reason(), current)));
+        } else if (p.reason() != ExpenseReason.DISCOUNT && p.reason() != ExpenseReason.HABIT
+                && mineRegret >= 2 && mineRegret * 2 >= count) {
+            found.add(finding(InsightAnalysis.FindingType.INTENT_BACKFIRE, p.reason() == ExpenseReason.NEED ? 70 : 86,
+                    "count", count, "regretCount", (int) mineRegret,
+                    "othersCount", others.size(), "othersRegretCount", (int) othersRegret));
+        }
+
+        // 이번 기간 후회가 이 패턴에 몰림
+        if (mineRegret >= 2 && !others.isEmpty() && mineRegret * 10 >= totalRegret * 6) {
+            found.add(finding(InsightAnalysis.FindingType.REGRET_CONCENTRATION, mineRegret == totalRegret ? 90 : 84,
+                    "regretCount", (int) mineRegret, "totalRegretCount", (int) totalRegret));
+        }
+
+        // 기분이 계기 (보통은 대비가 없어 뺀다)
+        InsightAnalysis.Finding mood = null;
+        long bestMood = 0;
+        for (ExpenseMood m : List.of(ExpenseMood.TIRED, ExpenseMood.DEPRESSED, ExpenseMood.GOOD)) {
+            long mineMood = mine.stream().filter(e -> e.getMood() == m).count();
+            long totalMood = current.stream().filter(e -> e.getMood() == m).count();
+            if (mineMood >= 2 && mineMood * 2 >= count && mineMood * 10 >= totalMood * 6 && mineMood > bestMood) {
+                bestMood = mineMood;
+                mood = finding(InsightAnalysis.FindingType.MOOD_TRIGGER, m == ExpenseMood.GOOD ? 60 : 82,
+                        "mood", m, "moodCount", (int) mineMood, "totalMoodCount", (int) totalMood, "count", count);
             }
         }
-        return new InsightAnalysis.PatternContrast(othersCount, othersRegret, representative, patternMoods, othersMoods);
+        if (mood != null) {
+            found.add(mood);
+        }
+
+        // 요일·주말이 계기
+        InsightAnalysis.Finding day = dayTrigger(mine, others);
+        if (day != null) {
+            found.add(day);
+        }
+
+        // 한 번은 작아도 모이면 큼
+        long mineTotal = sum(mine);
+        Expense biggestOther = others.stream().max(Comparator.comparingInt(Expense::getAmount)).orElse(null);
+        if (count >= 3 && p.comboAverage() <= 10_000 && biggestOther != null && mineTotal >= biggestOther.getAmount()) {
+            found.add(finding(InsightAnalysis.FindingType.SMALL_ADDS_UP, p.reason() == ExpenseReason.HABIT ? 76 : 58,
+                    "count", count, "total", mineTotal, "average", p.comboAverage(),
+                    "biggestOtherItem", biggestOther.getItem(), "biggestOtherAmount", biggestOther.getAmount()));
+        }
+
+        // 기록 수 비중보다 금액 비중이 큼
+        long total = sum(current);
+        int countShare = (int) Math.round(count * 100.0 / current.size());
+        int amountShare = total == 0 ? 0 : (int) Math.round(mineTotal * 100.0 / total);
+        if (amountShare - countShare >= 20) {
+            found.add(finding(InsightAnalysis.FindingType.AMOUNT_WEIGHT, 62,
+                    "count", count, "expenseCount", current.size(), "countShare", countShare, "amountShare", amountShare));
+        }
+
+        // 후회율이 나머지보다 30%p 이상 높음 (정수 비교)
+        if (mineRegret >= 2 && !others.isEmpty()
+                && mineRegret * 100 * others.size() - othersRegret * 100 * count >= 30L * count * others.size()) {
+            found.add(finding(InsightAnalysis.FindingType.REGRET_GAP, 70,
+                    "count", count, "regretCount", (int) mineRegret,
+                    "othersCount", others.size(), "othersRegretCount", (int) othersRegret));
+        }
+
+        // 보조: 후회가 하나도 없는 다른 이유 (2건 이상)
+        if (mineRegret >= 1) {
+            Map<ExpenseReason, List<Expense>> byReason = new EnumMap<>(ExpenseReason.class);
+            others.forEach(e -> byReason.computeIfAbsent(e.getReason(), r -> new ArrayList<>()).add(e));
+            byReason.entrySet().stream()
+                    .filter(en -> en.getKey() != p.reason() && en.getValue().size() >= 2 && regretCount(en.getValue()) == 0)
+                    .max(Comparator.comparingInt((Map.Entry<ExpenseReason, List<Expense>> en) -> en.getValue().size())
+                            .thenComparing(Map.Entry::getKey, Comparator.reverseOrder()))
+                    .ifPresent(en -> found.add(finding(InsightAnalysis.FindingType.SAFE_ZONE, 40,
+                            "reason", en.getKey(), "count", en.getValue().size())));
+        }
+
+        found.sort(Comparator.comparingInt(InsightAnalysis.Finding::strength).reversed());
+        found.add(finding(InsightAnalysis.FindingType.BASIC, 10,
+                "count", count, "total", mineTotal, "average", p.comboAverage(), "othersAverage", p.othersAverage(),
+                "regretCount", (int) mineRegret, "shareOfTotal", amountShare,
+                "representativeItemCount", (int) mine.stream().filter(e -> e.getItem() == p.item()).count()));
+        return found;
+    }
+
+    /** 패턴 기록이 모두 같은 요일(3건 이상)이거나, 주말에 몰리고 나머지는 주말이 적을 때. */
+    private static InsightAnalysis.Finding dayTrigger(List<Expense> mine, List<Expense> others) {
+        int count = mine.size();
+        if (count >= 3) {
+            DayOfWeek first = mine.getFirst().getSpentOn().getDayOfWeek();
+            if (mine.stream().allMatch(e -> e.getSpentOn().getDayOfWeek() == first)) {
+                return finding(InsightAnalysis.FindingType.DAY_TRIGGER, 68, "day", first, "dayCount", count, "count", count);
+            }
+        }
+        long mineWeekend = mine.stream().filter(InsightCalculator::isWeekend).count();
+        long othersWeekend = others.stream().filter(InsightCalculator::isWeekend).count();
+        if (count >= 2 && mineWeekend * 4 >= count * 3L && others.size() >= 2 && othersWeekend * 10 <= others.size() * 4L) {
+            return finding(InsightAnalysis.FindingType.DAY_TRIGGER, 64, "day", "주말", "dayCount", (int) mineWeekend,
+                    "count", count);
+        }
+        return null;
+    }
+
+    private static boolean isWeekend(Expense e) {
+        DayOfWeek d = e.getSpentOn().getDayOfWeek();
+        return d == DayOfWeek.SATURDAY || d == DayOfWeek.SUNDAY;
+    }
+
+    /** 이 이유의 건당 평균이 이번 기간 이유들 중 가장 높은지 */
+    private static boolean isHighestAverage(ExpenseReason reason, List<Expense> current) {
+        Map<ExpenseReason, long[]> byReason = new EnumMap<>(ExpenseReason.class); // [sum, count]
+        for (Expense e : current) {
+            long[] acc = byReason.computeIfAbsent(e.getReason(), r -> new long[2]);
+            acc[0] += e.getAmount();
+            acc[1]++;
+        }
+        long[] mine = byReason.get(reason);
+        return byReason.entrySet().stream().filter(en -> en.getKey() != reason)
+                .allMatch(en -> mine[0] * en.getValue()[1] > en.getValue()[0] * mine[1]);
+    }
+
+    /** a ÷ b, 소수 첫째 자리 */
+    private static double ratio(long a, long b) {
+        return BigDecimal.valueOf(a).divide(BigDecimal.valueOf(b), 1, RoundingMode.HALF_UP).doubleValue();
+    }
+
+    private static InsightAnalysis.Finding finding(InsightAnalysis.FindingType type, int strength, Object... keyValues) {
+        Map<String, Object> facts = new LinkedHashMap<>();
+        for (int i = 0; i < keyValues.length; i += 2) {
+            facts.put((String) keyValues[i], keyValues[i + 1]);
+        }
+        return new InsightAnalysis.Finding(type, strength, facts);
     }
 
     // ===== 이유별 비중 =====
