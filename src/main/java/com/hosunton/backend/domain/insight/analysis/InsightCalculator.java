@@ -122,11 +122,14 @@ public final class InsightCalculator {
             List<Expense> itemExpenses = entry.getValue();
             long itemTotal = sum(itemExpenses);
 
-            Map<ExpenseReason, long[]> byReason = new EnumMap<>(ExpenseReason.class); // [sum, count]
+            Map<ExpenseReason, long[]> byReason = new EnumMap<>(ExpenseReason.class); // [sum, count, regret]
             for (Expense e : itemExpenses) {
-                long[] acc = byReason.computeIfAbsent(e.getReason(), r -> new long[2]);
+                long[] acc = byReason.computeIfAbsent(e.getReason(), r -> new long[3]);
                 acc[0] += e.getAmount();
                 acc[1]++;
+                if (e.isRegret()) {
+                    acc[2]++;
+                }
             }
 
             for (Map.Entry<ExpenseReason, long[]> combo : byReason.entrySet()) {
@@ -147,7 +150,7 @@ public final class InsightCalculator {
                         combo.getKey(), item, (int) comboCount, comboSum,
                         Math.round((double) comboSum / comboCount),
                         Math.round((double) othersSum / othersCount),
-                        itemTotal);
+                        itemTotal, (int) combo.getValue()[2]);
                 if (best == null || isBetter(candidate, best)) {
                     best = candidate;
                 }

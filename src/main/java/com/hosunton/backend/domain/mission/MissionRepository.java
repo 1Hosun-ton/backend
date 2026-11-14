@@ -26,7 +26,6 @@ public interface MissionRepository extends JpaRepository<Mission, Long> {
 
     Optional<Mission> findByUserIdAndResultIsNull(Long userId);
     Optional<Mission> findFirstByUserIdAndResultIsNotNullOrderByStartedOnDescIdDesc(Long userId);
-    Optional<Mission> findFirstByUserIdAndResultAndDifficultyIsNullOrderByStartedOnDescIdDesc(Long userId, MissionResult result);
     Optional<Mission> findFirstByUserIdAndStartedOnBetweenOrderByStartedOnDescIdDesc(Long userId, LocalDate from, LocalDate to);
 
     // CASE는 UPDATE 시점의 doneDays로 판정하여 체크와 경합해도 오래된 값으로 판정하지 않는다.
