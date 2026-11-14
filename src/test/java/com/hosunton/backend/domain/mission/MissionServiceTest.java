@@ -75,7 +75,7 @@ class MissionServiceTest {
         assertThat(response.mission().feedbackRequired()).isTrue();
         assertThat(missions.findById(failed.getId()).orElseThrow().getJudgedAt()).isEqualTo(NOW);
         var achieved = mission(TODAY.minusDays(7), 5);
-        service.getOverview(userId);
+        assertThat(service.getOverview(userId).mission().status()).isEqualTo(MissionStatus.ACHIEVED); // 최근 종료 미션 노출
         assertThat(missions.findById(achieved.getId()).orElseThrow().getResult()).isEqualTo(MissionResult.ACHIEVED);
         service(Clock.fixed(NOW.plusSeconds(60), CLOCK.getZone())).getOverview(userId);
         assertThat(missions.findById(achieved.getId()).orElseThrow().getJudgedAt()).isEqualTo(NOW);
@@ -147,6 +147,8 @@ class MissionServiceTest {
         assertThat(tomorrow.check(userId, m.getId(), null).memo()).isEqualTo("첫날");
         var next = service(Clock.offset(CLOCK, Duration.ofDays(2)));
         assertThat(next.check(userId, m.getId(), new com.hosunton.backend.domain.mission.dto.MissionCheckRequest("새 메모")).memo()).isEqualTo("새 메모");
+        var blank = service(Clock.offset(CLOCK, Duration.ofDays(3)));
+        assertThat(blank.check(userId, m.getId(), new com.hosunton.backend.domain.mission.dto.MissionCheckRequest("  ")).memo()).isEqualTo("새 메모");
     }
     @Test void 실패_사유는_실패만_허용하며_재입력_가능() {
         var request = new com.hosunton.backend.domain.mission.dto.MissionDifficultyRequest(MissionDifficulty.FORGOT);
