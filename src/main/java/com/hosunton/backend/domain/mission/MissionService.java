@@ -45,10 +45,10 @@ public class MissionService {
 
         var set = recommendations.findFirstByUserIdAndSelectedFalseAndCreatedAtAfterOrderByCreatedAtDescIdDesc(userId, now.minus(7, ChronoUnit.DAYS))
             .orElseGet(() -> {
-                var pattern = InsightCalculator.findPattern(current);
+                var pattern = InsightCalculator.findKeyPattern(current);
                 if (pattern == null) {
                     LocalDate monthStart = PeriodType.MONTH.startOf(today);
-                    pattern = InsightCalculator.findPattern(expenses.findByUserIdAndSpentOnBetween(userId, monthStart, PeriodType.MONTH.endOf(monthStart)));
+                    pattern = InsightCalculator.findKeyPattern(expenses.findByUserIdAndSpentOnBetween(userId, monthStart, PeriodType.MONTH.endOf(monthStart)));
                 }
                 MissionResult last = missions.findFirstByUserIdAndResultIsNotNullOrderByStartedOnDescIdDesc(userId).map(Mission::getResult).orElse(null);
                 var level = MissionRecommender.level(last);

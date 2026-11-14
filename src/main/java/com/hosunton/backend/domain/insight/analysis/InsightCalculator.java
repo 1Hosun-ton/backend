@@ -50,7 +50,7 @@ public final class InsightCalculator {
                 reasonBreakdown(current, total, previous.isEmpty() ? null : previous, previousTotal),
                 trend(type, periodStart, current),
                 previousSummary,
-                findPattern(current)
+                findKeyPattern(current)
         );
     }
 
@@ -150,13 +150,106 @@ public final class InsightCalculator {
                         combo.getKey(), item, (int) comboCount, comboSum,
                         Math.round((double) comboSum / comboCount),
                         Math.round((double) othersSum / othersCount),
-                        itemTotal, (int) combo.getValue()[2]);
+                        itemTotal, (int) combo.getValue()[2], InsightAnalysis.PatternType.ITEM_AMOUNT);
                 if (best == null || isBetter(candidate, best)) {
                     best = candidate;
                 }
             }
         }
         return best;
+    }
+
+    /**
+     * 인사이트·미션이 함께 쓰는 핵심 패턴. 아래 순서로 찾고 처음 맞는 것을 쓴다. 모두 아니면 null.
+     * ① 같은 항목 안 이유×항목 (findPattern) ② 이유 건당 금액 20%↑ ③ 이유 절반 이상 후회 ④ 가장 잦은 이유.
+     * ②~④는 같은 이유 기록이 2건 이상이어야 한다.
+     */
+    public static InsightAnalysis.Pattern findKeyPattern(List<Expense> current) {
+        InsightAnalysis.Pattern itemPattern = findPattern(current);
+        if (itemPattern != null) {
+            return itemPattern;
+        }
+
+        Map<ExpenseReason, List<Expense>> byReason = new EnumMap<>(ExpenseReason.class);
+        for (Expense e : current) {
+            byReason.computeIfAbsent(e.getReason(), r -> new ArrayList<>()).add(e);
+        }
+        long total = sum(current);
+        List<ExpenseReason> candidates = byReason.entrySet().stream()
+                .filter(entry -> entry.getValue().size() >= MIN_PATTERN_COUNT)
+                .map(Map.Entry::getKey)
+                .toList();
+        if (candidates.isEmpty()) {
+            return null;
+        }
+
+        // ② 다른 이유 전체 평균보다 건당 20% 이상 높음 (합계 큰 순). 정수로 비교해 경계값 오차를 막는다.
+        ExpenseReason amountReason = candidates.stream()
+                .filter(r -> {
+                    long reasonSum = sum(byReason.get(r));
+                    long reasonCount = byReason.get(r).size();
+                    long othersCount = current.size() - reasonCount;
+                    return othersCount > 0 && reasonSum * othersCount * 100
+                            >= (total - reasonSum) * reasonCount * (100 + MIN_EXCESS_PERCENT);
+                })
+                .max(Comparator.comparingLong((ExpenseReason r) -> sum(byReason.get(r)))
+                        .thenComparingInt(r -> byReason.get(r).size())
+                        .thenComparing(Comparator.reverseOrder()))
+                .orElse(null);
+        if (amountReason != null) {
+            return reasonPattern(amountReason, byReason.get(amountReason), current,
+                    InsightAnalysis.PatternType.REASON_AMOUNT);
+        }
+
+        // ③ 절반 이상 후회 (후회 건수 많은 순)
+        ExpenseReason regretReason = candidates.stream()
+                .filter(r -> regretCount(byReason.get(r)) * 2 >= byReason.get(r).size())
+                .max(Comparator.comparingLong((ExpenseReason r) -> regretCount(byReason.get(r)))
+                        .thenComparingLong(r -> sum(byReason.get(r)))
+                        .thenComparing(Comparator.reverseOrder()))
+                .orElse(null);
+        if (regretReason != null) {
+            return reasonPattern(regretReason, byReason.get(regretReason), current,
+                    InsightAnalysis.PatternType.REASON_REGRET);
+        }
+
+        // ④ 가장 잦은 이유 (같으면 합계 큰 순)
+        ExpenseReason frequentReason = candidates.stream()
+                .max(Comparator.comparingInt((ExpenseReason r) -> byReason.get(r).size())
+                        .thenComparingLong(r -> sum(byReason.get(r)))
+                        .thenComparing(Comparator.reverseOrder()))
+                .orElseThrow();
+        return reasonPattern(frequentReason, byReason.get(frequentReason), current,
+                InsightAnalysis.PatternType.REASON_FREQUENT);
+    }
+
+    /** 이유 기준 패턴. 대표 항목은 그 이유로 가장 많이 쓴 항목 (같으면 건수, 그다음 enum 순서). */
+    private static InsightAnalysis.Pattern reasonPattern(ExpenseReason reason, List<Expense> reasonExpenses,
+                                                         List<Expense> current, InsightAnalysis.PatternType type) {
+        Map<ExpenseItem, long[]> byItem = new EnumMap<>(ExpenseItem.class); // [sum, count]
+        for (Expense e : reasonExpenses) {
+            long[] acc = byItem.computeIfAbsent(e.getItem(), i -> new long[2]);
+            acc[0] += e.getAmount();
+            acc[1]++;
+        }
+        ExpenseItem item = byItem.entrySet().stream()
+                .max(Comparator.comparingLong((Map.Entry<ExpenseItem, long[]> en) -> en.getValue()[0])
+                        .thenComparingLong(en -> en.getValue()[1])
+                        .thenComparing(Map.Entry::getKey, Comparator.reverseOrder()))
+                .orElseThrow()
+                .getKey();
+        long reasonSum = sum(reasonExpenses);
+        int reasonCount = reasonExpenses.size();
+        long othersSum = sum(current) - reasonSum;
+        int othersCount = current.size() - reasonCount;
+        return new InsightAnalysis.Pattern(reason, item, reasonCount, reasonSum,
+                Math.round((double) reasonSum / reasonCount),
+                othersCount == 0 ? 0 : Math.round((double) othersSum / othersCount),
+                byItem.get(item)[0], (int) regretCount(reasonExpenses), type);
+    }
+
+    private static long regretCount(List<Expense> expenses) {
+        return expenses.stream().filter(Expense::isRegret).count();
     }
 
     /** 조합 합계가 큰 쪽. 같으면 건수가 많은 쪽, 그래도 같으면 enum 순서로 고정. */
