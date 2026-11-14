@@ -7,6 +7,7 @@ import com.hosunton.backend.domain.insight.InsightCacheService;
 import com.hosunton.backend.global.exception.BusinessException;
 import com.hosunton.backend.global.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -25,6 +26,7 @@ public class ExpenseService {
 
     private final ExpenseRepository expenseRepository;
     private final InsightCacheService insightCacheService;
+    private final ApplicationEventPublisher eventPublisher;
     private final Clock clock;
 
     @Transactional
@@ -55,6 +57,7 @@ public class ExpenseService {
         );
         Expense saved = expenseRepository.save(expense);
         insightCacheService.invalidate(userId, spentOn);
+        eventPublisher.publishEvent(new ExpenseChangedEvent(userId, spentOn));
         return ExpenseResponse.from(saved);
     }
 
@@ -103,6 +106,7 @@ public class ExpenseService {
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND));
         expenseRepository.delete(expense);
         insightCacheService.invalidate(userId, expense.getSpentOn());
+        eventPublisher.publishEvent(new ExpenseChangedEvent(userId, expense.getSpentOn()));
     }
 
     /**
