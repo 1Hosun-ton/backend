@@ -51,8 +51,9 @@ public record InsightAnalysis(
      * @param comboAverage  이유×항목 건당 평균 (원 단위 반올림)
      * @param othersAverage 같은 항목의 다른 이유 건당 평균 (원 단위 반올림)
      * @param itemTotal     해당 항목 전체 지출 합계
+     * @param comboRegretCount 이유×항목 조합 중 후회한 기록 수
      */
     public record Pattern(ExpenseReason reason, ExpenseItem item, int comboCount, long comboTotal,
-                          long comboAverage, long othersAverage, long itemTotal) {
+                          long comboAverage, long othersAverage, long itemTotal, int comboRegretCount) {
     }
 }
