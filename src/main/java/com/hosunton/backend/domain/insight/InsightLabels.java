@@ -1,6 +1,7 @@
 package com.hosunton.backend.domain.insight;
 
 import com.hosunton.backend.domain.expense.ExpenseItem;
+import com.hosunton.backend.domain.expense.ExpenseMood;
 import com.hosunton.backend.domain.expense.ExpenseReason;
 
 /**
@@ -19,6 +20,15 @@ public final class InsightLabels {
             case SHOPPING -> "쇼핑";
             case TRANSPORT -> "교통비";
             case ETC -> "기타";
+        };
+    }
+
+    public static String of(ExpenseMood mood) {
+        return switch (mood) {
+            case GOOD -> "좋음";
+            case NORMAL -> "보통";
+            case TIRED -> "지침";
+            case DEPRESSED -> "우울";
         };
     }
 
