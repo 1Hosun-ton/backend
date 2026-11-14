@@ -45,15 +45,30 @@ public record InsightAnalysis(
     public record PreviousSummary(long totalAmount, int regretCount, double totalAmountChangeRate) {
     }
 
+    /** 핵심 패턴을 찾은 규칙. 위에서부터 순서대로 찾고 처음 맞는 것을 쓴다. */
+    public enum PatternType {
+        /** 같은 항목 안에서 이 이유의 건당 금액이 다른 이유보다 20% 이상 높음 (기획안 7-1 원래 기준) */
+        ITEM_AMOUNT,
+        /** 이 이유(2건 이상)의 건당 금액이 다른 이유 전체 평균보다 20% 이상 높음 */
+        REASON_AMOUNT,
+        /** 이 이유(2건 이상)로 쓴 기록의 절반 이상을 후회함 */
+        REASON_REGRET,
+        /** 2건 이상인 이유 중 가장 자주 쓴 이유 */
+        REASON_FREQUENT
+    }
+
     /**
-     * 핵심 패턴: 같은 기간·같은 항목에서 해당 이유의 건당 평균이 다른 이유 평균보다 20% 이상 높은 조합.
+     * 핵심 패턴. ITEM_AMOUNT 는 이유×항목 조합 기준이고, 나머지는 이유 기준이며 item 은 그 이유로 가장 많이 쓴 대표 항목이다.
      *
-     * @param comboAverage  이유×항목 건당 평균 (원 단위 반올림)
-     * @param othersAverage 같은 항목의 다른 이유 건당 평균 (원 단위 반올림)
-     * @param itemTotal     해당 항목 전체 지출 합계
-     * @param comboRegretCount 이유×항목 조합 중 후회한 기록 수
+     * @param comboCount       ITEM_AMOUNT: 이유×항목 건수 / 그 외: 이유 건수
+     * @param comboTotal       ITEM_AMOUNT: 이유×항목 합계 / 그 외: 이유 합계
+     * @param comboAverage     위 합계의 건당 평균 (원 단위 반올림)
+     * @param othersAverage    ITEM_AMOUNT: 같은 항목의 다른 이유 건당 평균 / 그 외: 다른 이유 전체 건당 평균 (없으면 0)
+     * @param itemTotal        ITEM_AMOUNT: 해당 항목 전체 합계 / 그 외: 그 이유로 대표 항목에 쓴 합계
+     * @param comboRegretCount comboCount 중 후회한 기록 수
      */
     public record Pattern(ExpenseReason reason, ExpenseItem item, int comboCount, long comboTotal,
-                          long comboAverage, long othersAverage, long itemTotal, int comboRegretCount) {
+                          long comboAverage, long othersAverage, long itemTotal, int comboRegretCount,
+                          PatternType type) {
     }
 }
