@@ -13,7 +13,9 @@ public record GeminiProperties(
         String apiKey,
         String model,
         String baseUrl,
-        Duration timeout
+        Duration timeout,
+        /** 생각 수준(low/medium/high). 비우면 모델 기본값. 낮출수록 빠르고 싸다. */
+        String thinkingLevel
 ) {
 
     public GeminiProperties {
@@ -25,6 +27,9 @@ public record GeminiProperties(
         }
         if (timeout == null) {
             timeout = Duration.ofSeconds(15);
+        }
+        if (thinkingLevel != null && thinkingLevel.isBlank()) {
+            thinkingLevel = null;
         }
     }
 
