@@ -1,5 +1,6 @@
 package com.hosunton.backend.domain.expense.dto;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import java.time.LocalDate;
 import java.util.List;
 
@@ -13,9 +14,11 @@ public record ExpenseListResponse(
         List<ExpenseResponse> expenses
 ) {
 
+    @Schema(name = "ExpensePeriod")
     public record Period(LocalDate from, LocalDate to) {
     }
 
+    @Schema(name = "ExpenseSummary")
     public record Summary(long totalAmount, long dailyAverage, long weeklyAverage) {
     }
 }
