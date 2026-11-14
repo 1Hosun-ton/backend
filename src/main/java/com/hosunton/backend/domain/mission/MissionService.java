@@ -30,7 +30,8 @@ public class MissionService {
         LocalDate today = LocalDate.ofInstant(now, clock.getZone());
         judge.judgeExpired(userId, today, now);
         var active = missions.findByUserIdAndResultIsNull(userId);
-        MissionResponse mission = active.or(() -> missions.findFirstByUserIdAndResultAndDifficultyIsNullOrderByStartedOnDescIdDesc(userId, MissionResult.FAILED))
+        // 진행 중 미션이 없으면 가장 최근 종료 미션(달성·미달성)을 보여 준다. 새 미션을 시작하면 진행 중 미션으로 바뀐다.
+        MissionResponse mission = active.or(() -> missions.findFirstByUserIdAndResultIsNotNullOrderByStartedOnDescIdDesc(userId))
             .map(m -> MissionResponse.from(m, today)).orElse(null);
         long count = expenses.countByUserId(userId);
         if (count < 5) return new MissionOverviewResponse(count, 5, null, null, List.of(), mission);
@@ -101,6 +102,8 @@ public class MissionService {
     @Transactional
     public MissionCheckResponse check(Long userId, Long missionId, MissionCheckRequest request) {
         String memo = request == null ? null : request.memo();
+        // 빈 메모·공백 메모는 입력하지 않은 것으로 보고 기존 메모를 유지한다.
+        if (memo != null && memo.isBlank()) memo = null;
         if (memo != null && memo.length() > 100) throw new BusinessException(ErrorCode.VALIDATION_ERROR);
         ownedMission(userId, missionId);
         Instant now = clock.instant();
