@@ -81,6 +81,7 @@ public class InsightNarrator {
                 .toList());
         InsightAnalysis.Pattern p = a.pattern();
         Map<String, Object> keyPattern = new LinkedHashMap<>();
+        keyPattern.put("patternType", p.type().name());
         keyPattern.put("reason", InsightLabels.of(p.reason()));
         keyPattern.put("item", InsightLabels.of(p.item()));
         keyPattern.put("count", p.comboCount());
@@ -222,8 +223,15 @@ public class InsightNarrator {
         InsightAnalysis.Pattern p = a.pattern();
         String item = InsightLabels.of(p.item());
 
-        String insight = "%s 쓴 %s 지출은 다른 %s 지출보다 건당 금액이 높아요."
-                .formatted(reasonPhrase(p.reason()), item, item);
+        String reason = reasonPhrase(p.reason());
+        String insight = switch (p.type()) {
+            case ITEM_AMOUNT -> "%s 쓴 %s 지출은 다른 %s 지출보다 건당 금액이 높아요.".formatted(reason, item, item);
+            case REASON_AMOUNT -> "%s 쓴 소비는 다른 이유로 쓴 소비보다 건당 금액이 높아요.".formatted(reason);
+            case REASON_REGRET -> p.comboRegretCount() == p.comboCount()
+                    ? "%s 쓴 소비는 모두 후회했어요.".formatted(reason)
+                    : "%s 쓴 소비에서 후회한 기록이 많았어요.".formatted(reason);
+            case REASON_FREQUENT -> "%s 쓴 소비가 가장 잦았어요.".formatted(reason);
+        };
 
         // AI 지시문의 comparison 규칙과 같은 문장: 전체 지출 증감률 하나만 쓴다.
         String comparison = null;
