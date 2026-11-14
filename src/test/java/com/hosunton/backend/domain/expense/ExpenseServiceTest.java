@@ -51,7 +51,7 @@ class ExpenseServiceTest {
 
     @BeforeEach
     void setUp() {
-        expenseService = new ExpenseService(expenseRepository, insightCacheService, Clock.fixed(NOW, KST));
+        expenseService = new ExpenseService(expenseRepository, insightCacheService, event -> { }, Clock.fixed(NOW, KST));
     }
 
     private ExpenseCreateRequest request(Long amount, LocalDate spentAt, ExpenseReason reason, Boolean regret) {
