@@ -38,7 +38,7 @@ public class GeminiInsightWriter implements InsightWriter {
                  · 금액 대비: comparedTo.averageRatio 가 1.5 이상이다 → "건당 평균 18,000원으로 다른 이유로 쓴 소비의 2.2배였어요"처럼. 단, ITEM_AMOUNT 면 "다른 {item}의 2.2배"(예: 다른 배달 음식의)라고 쓰고 "다른 이유로 쓴 소비"라고 쓰지 않는다.
                  · 반복: representativeItemCount 가 count 와 같고 2 이상이다 → "두 번 모두 카페였어요"처럼.
                - 첫 문장: 주어는 keyPattern 의 이유(와 항목)로 하고, 가장 우선하는 대비 하나를 숫자와 함께 쓴다. 해당하는 대비가 없으면 아래 patternType 사실을 쓴다.
-               - 두 번째 문장(선택): 다음 대비 하나, 또는 대비가 하나뿐이면 그 대비가 보여 주는 모습을 담담하게 한마디로 쓴다. 예: "건당 평균은 4,750원이었어요.", "모두 같은 항목이었어요." 원인이나 속마음을 단정하지 않는다("스트레스 때문에", "외로워서", "보상 심리로" 같은 말 금지).
+               - 두 번째 문장(선택): 다음 대비 하나, 또는 대비가 하나뿐이면 그 대비가 보여 주는 모습을 담담하게 한마디로 쓴다. 예: "그중 2건은 지친다고 기록한 날이었어요." 두 문장을 합쳐 사실이 두 가지를 넘으면 두 번째 문장을 쓰지 않는다. 원인이나 속마음을 단정하지 않는다("스트레스 때문에", "외로워서", "보상 심리로" 같은 말 금지).
                - patternType 사실 표현(대비가 없을 때): ITEM_AMOUNT → "{이유} {item}은 다른 {item}보다 건당 금액이 높았어요"(비교 대상은 "다른 {item}"). REASON_AMOUNT → "{이유} 쓴 소비는 다른 이유보다 건당 금액이 높았어요". REASON_REGRET → 후회 사실(regretCount 가 count 와 같으면 "모두 후회했어요"). REASON_FREQUENT → "{이유} 쓴 소비가 가장 많았어요". 같은 뜻을 두 번 쓰지 않는다.
                - 이유는 자연스러운 말로 풀어 쓴다(필요해서 → 필요해서, 스트레스 해소 → 스트레스를 풀려고, 할인 → 할인을 보고, 충동 → 즉흥적으로, 보상 → 나에게 주는 보상으로, 습관 → 습관처럼).
                - 기분은 사용자가 적은 것임을 드러낸다: 좋음 → 기분이 좋다고 기록한 날, 보통 → 보통이라고 기록한 날, 지침 → 지친다고 기록한 날, 우울 → 우울하다고 기록한 날.
@@ -71,7 +71,7 @@ public class GeminiInsightWriter implements InsightWriter {
 
             예시 3
             입력: {"period":{"type":"월간","startDate":"2026-11-01","endDate":"2026-11-30"},"current_stats":{"totalAmount":56500,"expenseCount":5,"regretCount":0,"reasonBreakdown":[{"reason":"할인","amount":20000,"count":1,"ratio":35.4},{"reason":"스트레스 해소","amount":15000,"count":1,"ratio":26.55},{"reason":"필요해서","amount":12000,"count":1,"ratio":21.24},{"reason":"습관","amount":9500,"count":2,"ratio":16.81}],"keyPattern":{"patternType":"REASON_FREQUENT","reason":"습관","item":"카페","count":2,"comboTotal":9500,"comboAverage":4750,"othersAverage":15667,"itemTotal":9500,"regretCount":0,"shareOfTotal":16.8,"regretRate":0,"representativeItemCount":2,"moods":{}},"comparedTo":{"count":3,"regretCount":0,"regretRate":0,"averageAmount":15667,"averageRatio":0.3,"moods":{}}},"previous_stats":null,"changes":null}
-            출력: {"insight":"이번 달 가장 많이 기록한 이유는 습관이었고, 두 번 모두 카페였어요. 건당 평균은 4,750원이었어요.","comparison":"","suggestion":"카페로 향하기 전에 오늘 이미 마신 음료를 떠올려 보는 건 어때요?","questionForReflection":"카페로 향하던 순간 어떤 마음이었는지 떠올려 볼까요?"}
+            출력: {"insight":"이번 달 가장 많이 기록한 이유는 습관이었고, 두 번 모두 카페였어요.","comparison":"","suggestion":"카페로 향하기 전에 오늘 이미 마신 음료를 떠올려 보는 건 어때요?","questionForReflection":"카페로 향하던 순간 어떤 마음이었는지 떠올려 볼까요?"}
             """;
 
 
