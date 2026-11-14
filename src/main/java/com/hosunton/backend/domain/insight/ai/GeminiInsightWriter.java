@@ -28,10 +28,10 @@ public class GeminiInsightWriter implements InsightWriter {
                   할인 → facts average(건당 평균), othersAverage, averageRatio(배수), comparedLabel(견준 대상), highestAverageAmongReasons. → 아끼려고 고른 소비가 오히려 더 비쌌다.
                   그 밖의 이유 → facts count, regretCount, othersCount, othersRegretCount. → 스트레스 해소: 기분을 풀려던 소비가 후회로 남았다 / 보상: 나를 챙기려던 소비가 만족보다 후회로 남았다 / 충동: 즉흥적으로 쓴 소비가 후회로 남았다 / 필요해서: 필요하다고 판단한 소비에도 후회가 남았다.
               · REGRET_CONCENTRATION: facts regretCount(이 패턴의 후회), totalRegretCount(기간 전체 후회). → 이번 후회는 대부분 여기서 나왔다. 여기만 바꿔도 후회가 크게 준다.
-              · MOOD_TRIGGER: facts mood, moodCount(패턴 중 그 기분 기록), totalMoodCount(기간 전체에서 그 기분 기록), count. → 그 기분인 날 이 소비를 했다. 기분이 계기다.
+              · MOOD_TRIGGER: facts mood, moodCount(패턴 중 그 기분 기록), totalMoodCount(기간 전체에서 그 기분 기록), count. → 그 기분으로 기록한 소비는 대부분 이 소비였다. 기분이 계기다. "그 기분으로 기록한 소비" 범위로만 말하고 "그날 소비의 대부분"처럼 넓히지 않는다.
               · DAY_TRIGGER: facts day(요일 또는 "주말"), dayCount, count. → 이 소비가 그때 몰렸다. 그때가 계기다.
               · SMALL_ADDS_UP: facts count, total, average, biggestOtherItem, biggestOtherAmount(나머지 중 가장 큰 한 번). → 한 번은 작아 의식하지 못했지만 모이면 가장 큰 한 번보다 크다.
-              · AMOUNT_WEIGHT: facts countShare(기록 수 비중 %), amountShare(금액 비중 %). → 몇 번 안 되는데 돈은 여기서 가장 많이 나갔다.
+              · AMOUNT_WEIGHT: facts countShare(기록 수 비중 %), amountShare(금액 비중 %). → 기록 수에 비해 금액 비중이 크다. "가장 많이 나갔다"고 쓰지 않는다.
               · REGRET_GAP: facts count, regretCount, othersCount, othersRegretCount. → 이 소비만 유난히 후회가 많다.
               · SAFE_ZONE: facts reason, count. 그 이유로 쓴 소비는 하나도 후회하지 않았다. 대비용 보조 발견이다.
               · BASIC: 다른 발견이 없을 때 패턴의 사실. facts count, total, average, othersAverage, comparedLabel, regretCount, shareOfTotal.
@@ -39,12 +39,14 @@ public class GeminiInsightWriter implements InsightWriter {
 
             1. insight: 한두 문장.
                - 첫 문장 = 발견. findings[0] 의 "알아차릴 점"을 이 사람의 이유·항목·기분·때로 구체화한다. 계기(이유·기분·때)와 결과(후회, 더 큰 금액, 모인 돈)가 한 문장에 함께 드러나야 한다.
-                 좋은 예: "아끼려고 고른 할인 쇼핑이 오히려 이번 달 가장 비싼 소비였어요." "이번 달 후회는 대부분 스트레스를 풀려고 시킨 배달에서 나왔어요."
+                 첫 문장에 이 발견을 가장 잘 보여 주는 숫자 하나를 넣는다(배수, 후회 건수, 모인 금액 등). 건수·합계는 화면의 근거 줄에 따로 보이니 숫자를 늘어놓지 않는다.
+                 좋은 예: "아끼려던 할인 쇼핑이 오히려 다른 이유로 쓴 소비의 2.6배나 됐어요." "이번 달 후회 4건 중 3건이 스트레스를 풀려고 시킨 배달이었어요."
                  나쁜 예(요약일 뿐): "할인을 보고 쓴 소비는 건당 평균 14,167원이었어요." "습관처럼 쓴 소비가 가장 많았어요."
-               - 두 번째 문장(선택) = 근거. 첫 문장을 믿게 하는 숫자를 findings[0] 의 facts 로 쓴다. 바로 뒤 발견이나 SAFE_ZONE 이 첫 문장을 더 선명하게 하면 그것을 써도 된다(예: "반면 필요해서 쓴 소비 4건은 하나도 후회하지 않았어요.").
+               - 두 번째 문장 = 바꿔 볼 순간. 화면에서 이 문장 아래에 행동 제안과 "이 습관에 맞는 미션 보기" 버튼이 이어진다. 그 앞에서 사용자가 "여기서부터 바꿔 볼 수 있겠다"고 느끼도록, 첫 문장의 계기가 되는 순간 하나를 짚는다(할인 문구를 본 순간, 지친 날 배달 앱을 여는 순간, 금요일에 쇼핑 앱을 여는 순간, 습관처럼 카페로 향하는 순간). 숫자는 쓰지 않는다.
+                 구체적인 행동은 suggestion 이 맡으므로 여기서는 순간만 짚고 행동을 권하지 않는다. "~해 보세요" 같은 지시 없이 "~이 바꿔 볼 지점이에요", "~부터 달라질 수 있어요", "~을 한 번 알아차리는 것만으로도 달라져요"처럼 가능성으로 쓴다. 예시와 같은 문장을 그대로 쓰지 말고 이 사람의 이유·항목·계기에 맞게 쓴다.
                - 결과 발견(INTENT_BACKFIRE, REGRET_CONCENTRATION, REGRET_GAP, AMOUNT_WEIGHT, SMALL_ADDS_UP)과 계기 발견(MOOD_TRIGGER, DAY_TRIGGER)이 함께 있으면 순서와 상관없이 둘을 묶는다. 계기가 있어야 사용자가 다음에 바꿀 순간을 안다(예: "즉흥적으로 산 쇼핑은 세 번 모두 금요일이었고, 모두 후회로 남았어요.").
-               - 담는 발견은 두 문장 합쳐 두 개까지다. 두 번째 문장은 첫 문장과 같은 사실을 다시 말하지 않는다.
-               - findings[0] 이 BASIC 이면 첫 문장도 담담한 사실로 쓰고 의미를 부풀리지 않는다.
+               - 발견은 첫 문장에 두 개까지 담는다. 두 번째 문장은 새 사실을 더하지 않는다.
+               - findings[0] 이 BASIC 이면 첫 문장도 담담한 사실로 쓰고 의미를 부풀리지 않는다. 두 번째 문장은 그 이유로 쓰는 순간을 담담하게 짚는다.
                - 항목 이름은 representativeItemCount 가 count 와 같을 때만 주어에 붙인다("할인 쇼핑", "스트레스를 풀려고 시킨 배달"). 아니면 "할인을 보고 산 것", "스트레스를 풀려고 쓴 소비"처럼 쓴다.
                - 90자 이내, 마침표로 끝낸다.
             2. comparison: previous_stats 가 null 이면 빈 문자열 "" 을 넣는다. 아니면 아래 순서로 처음 해당하는 변화 하나만 쓴다. period.type 이 "월간"이면 "지난달", "주간"이면 "지난주"라고 부른다.
@@ -60,7 +62,7 @@ public class GeminiInsightWriter implements InsightWriter {
             - "가장 비싼"은 highestAverageAmongReasons 가 true 일 때만 쓴다. false 면 "오히려 더 비쌌어요"라고 쓴다. "후회가 없었어요"는 해당 후회 수가 0 일 때만 쓴다.
             - 계기는 사용자가 고른 이유·기분·날짜로만 말한다. 이유에 담긴 의도("아끼려고", "기분을 풀려고", "나를 챙기려고")는 사용자가 고른 이유의 뜻이라 써도 된다. 그 밖의 원인이나 속마음("외로워서", "스트레스 때문에", "보상 심리로")은 단정하지 않는다.
             - 요일·주말은 DAY_TRIGGER 가 있을 때만 쓴다. 시간대(저녁, 퇴근길 등)는 입력에 없으니 쓰지 않는다. "꾸준히", "매번", "~마다", "계속"처럼 반복을 단정하지 않고 "세 번 모두 금요일"처럼 건수로 말한다.
-            - 기분은 사용자가 적은 값이다. 근거 문장에서는 "지친다고 기록한 날"처럼 쓰고, 첫 문장에서는 "지친 날"로 줄여도 된다. 보통은 쓰지 않는다.
+            - 기분은 사용자가 적은 값이다. "지친다고 기록한 날 시킨 배달"처럼 패턴 기록에 붙여 쓰고, "지친 날"로 줄여도 된다. 보통은 쓰지 않는다.
             - 이유 표현: 필요해서 → 필요해서, 스트레스 해소 → 스트레스를 풀려고, 할인 → 할인을 보고(또는 아끼려고), 충동 → 즉흥적으로, 보상 → 나에게 주는 보상으로, 습관 → 습관처럼. 항목 동사: 배달 음식 → 시킨 배달, 쇼핑 → 산, 카페 → 들른 카페, 식비·교통비·기타 → 쓴.
             - 존댓말 해요체로 쓴다. "~습니다", "~됩니다"로 끝내지 않는다.
             - "~해야 해요", "~하세요", "줄이세요", "낭비", "과소비", "문제", "나쁜", "절대", "반드시"처럼 지시·훈계하는 말을 쓰지 않는다. 사도 된다, 안 된다를 판정하지 않는다. 최종 판단은 사용자 몫이다.
@@ -68,19 +70,19 @@ public class GeminiInsightWriter implements InsightWriter {
 
             예시 1
             입력: {"period":{"type":"월간","startDate":"2026-09-01","endDate":"2026-09-30"},"current_stats":{"totalAmount":108000,"expenseCount":8,"regretCount":1,"reasonBreakdown":[{"reason":"할인","amount":66000,"count":3,"ratio":61.11},{"reason":"필요해서","amount":30000,"count":3,"ratio":27.78},{"reason":"습관","amount":12000,"count":2,"ratio":11.11}],"keyPattern":{"patternType":"REASON_AMOUNT","reason":"할인","item":"쇼핑","count":3,"total":66000,"regretCount":1,"representativeItemCount":3}},"findings":[{"type":"INTENT_BACKFIRE","facts":{"count":3,"average":22000,"othersAverage":8400,"averageRatio":2.6,"highestAverageAmongReasons":true,"comparedLabel":"다른 이유로 쓴 소비"}},{"type":"AMOUNT_WEIGHT","facts":{"count":3,"expenseCount":8,"countShare":38,"amountShare":61}},{"type":"BASIC","facts":{"count":3,"total":66000,"average":22000,"othersAverage":8400,"regretCount":1,"shareOfTotal":61,"representativeItemCount":3,"comparedLabel":"다른 이유로 쓴 소비"}}],"previous_stats":null,"changes":null}
-            출력: {"insight":"아끼려고 고른 할인 쇼핑이 오히려 이번 달 가장 비싼 소비였어요. 건당 22,000원으로 다른 이유로 쓴 소비의 2.6배였어요.","comparison":"","suggestion":"할인 문구를 본 순간, 할인이 없어도 살지 먼저 떠올려 보는 건 어때요?","questionForReflection":"할인을 보고 고른 순간, 무엇에 가장 마음이 끌렸나요?"}
+            출력: {"insight":"아끼려던 할인 쇼핑이 오히려 다른 이유로 쓴 소비의 2.6배나 됐어요. 할인 문구를 본 그 순간이 다음에 바꿔 볼 지점이에요.","comparison":"","suggestion":"할인 문구를 본 순간, 할인이 없어도 살지 먼저 떠올려 보는 건 어때요?","questionForReflection":"할인을 보고 고른 순간, 무엇에 가장 마음이 끌렸나요?"}
 
             예시 2
             입력: {"period":{"type":"월간","startDate":"2026-10-01","endDate":"2026-10-31"},"current_stats":{"totalAmount":131000,"expenseCount":8,"regretCount":4,"reasonBreakdown":[{"reason":"스트레스 해소","amount":72000,"count":3,"ratio":54.96},{"reason":"필요해서","amount":45000,"count":4,"ratio":34.35},{"reason":"습관","amount":14000,"count":1,"ratio":10.69}],"keyPattern":{"patternType":"REASON_REGRET","reason":"스트레스 해소","item":"배달 음식","count":3,"total":72000,"regretCount":3,"representativeItemCount":3}},"findings":[{"type":"REGRET_CONCENTRATION","facts":{"regretCount":3,"totalRegretCount":4}},{"type":"INTENT_BACKFIRE","facts":{"count":3,"regretCount":3,"othersCount":5,"othersRegretCount":1}},{"type":"MOOD_TRIGGER","facts":{"mood":"지침","moodCount":3,"totalMoodCount":3,"count":3}},{"type":"BASIC","facts":{"count":3,"total":72000,"average":24000,"othersAverage":11800,"regretCount":3,"shareOfTotal":55,"representativeItemCount":3,"comparedLabel":"다른 이유로 쓴 소비"}}],"previous_stats":{"totalAmount":118000,"regretCount":2},"changes":{"totalAmountChangeRate":11.0,"regretCountChange":2,"reasonRatioChanges":[{"reason":"스트레스 해소","changePercentagePoint":12.4}],"keyReasonChangePercentagePoint":12.4}}
-            출력: {"insight":"이번 달 후회는 대부분 스트레스를 풀려고 시킨 배달에서 나왔어요. 후회한 4건 중 3건이었고, 모두 지친다고 기록한 날이었어요.","comparison":"지난달보다 스트레스 해소 소비 비중이 12.4%p 늘었어요","suggestion":"지친 날 배달 앱을 열기 전에 물 한 잔 마시며 잠깐 쉬어 보는 건 어때요?","questionForReflection":"지친 날 배달을 고르던 순간, 어떤 게 가장 필요했나요?"}
+            출력: {"insight":"이번 달 후회 4건 중 3건이 지친 날 스트레스를 풀려고 시킨 배달이었어요. 지친 날 배달 앱을 여는 순간부터 달라질 수 있어요.","comparison":"지난달보다 스트레스 해소 소비 비중이 12.4%p 늘었어요","suggestion":"지친 날 배달 앱을 열기 전에 물 한 잔 마시며 잠깐 쉬어 보는 건 어때요?","questionForReflection":"지친 날 배달을 고르던 순간, 어떤 게 가장 필요했나요?"}
 
             예시 3
             입력: {"period":{"type":"월간","startDate":"2026-08-01","endDate":"2026-08-31"},"current_stats":{"totalAmount":70200,"expenseCount":8,"regretCount":0,"reasonBreakdown":[{"reason":"습관","amount":28200,"count":6,"ratio":40.17},{"reason":"필요해서","amount":24000,"count":1,"ratio":34.19},{"reason":"보상","amount":18000,"count":1,"ratio":25.64}],"keyPattern":{"patternType":"REASON_FREQUENT","reason":"습관","item":"카페","count":6,"total":28200,"regretCount":0,"representativeItemCount":6}},"findings":[{"type":"SMALL_ADDS_UP","facts":{"count":6,"total":28200,"average":4700,"biggestOtherItem":"쇼핑","biggestOtherAmount":24000}},{"type":"BASIC","facts":{"count":6,"total":28200,"average":4700,"othersAverage":21000,"regretCount":0,"shareOfTotal":40,"representativeItemCount":6,"comparedLabel":"다른 이유로 쓴 소비"}}],"previous_stats":null,"changes":null}
-            출력: {"insight":"습관처럼 들른 카페는 한 번은 가볍지만, 모이니 이번 달 가장 큰 쇼핑 한 번보다 컸어요. 6번에 28,200원으로 쇼핑 24,000원을 넘었어요.","comparison":"","suggestion":"카페 앞에서 오늘 정말 마시고 싶은지 한 번 물어보는 건 어때요?","questionForReflection":"습관처럼 들른 날과 일부러 찾아간 날은 무엇이 달랐나요?"}
+            출력: {"insight":"습관처럼 들른 카페 6번이 모이니 28,200원으로, 이번 달 가장 큰 쇼핑 한 번보다 컸어요. 별생각 없이 카페로 향하는 그 순간을 알아차리는 것만으로도 달라져요.","comparison":"","suggestion":"카페 앞에서 오늘 정말 마시고 싶은지 한 번 물어보는 건 어때요?","questionForReflection":"습관처럼 들른 날과 일부러 찾아간 날은 무엇이 달랐나요?"}
 
             예시 4
             입력: {"period":{"type":"월간","startDate":"2026-07-01","endDate":"2026-07-31"},"current_stats":{"totalAmount":131500,"expenseCount":7,"regretCount":3,"reasonBreakdown":[{"reason":"충동","amount":96000,"count":3,"ratio":73.0},{"reason":"필요해서","amount":35500,"count":4,"ratio":27.0}],"keyPattern":{"patternType":"REASON_AMOUNT","reason":"충동","item":"쇼핑","count":3,"total":96000,"regretCount":3,"representativeItemCount":3}},"findings":[{"type":"INTENT_BACKFIRE","facts":{"count":3,"regretCount":3,"othersCount":4,"othersRegretCount":0}},{"type":"DAY_TRIGGER","facts":{"day":"금요일","dayCount":3,"count":3}},{"type":"SAFE_ZONE","facts":{"reason":"필요해서","count":4}},{"type":"BASIC","facts":{"count":3,"total":96000,"average":32000,"othersAverage":8875,"regretCount":3,"shareOfTotal":73,"representativeItemCount":3,"comparedLabel":"다른 이유로 쓴 소비"}}],"previous_stats":null,"changes":null}
-            출력: {"insight":"즉흥적으로 산 쇼핑은 세 번 모두 금요일이었고, 모두 후회로 남았어요. 반면 필요해서 쓴 소비 4건은 하나도 후회하지 않았어요.","comparison":"","suggestion":"금요일에 쇼핑 앱을 열면 장바구니에만 담아 두고 다음 날 다시 보는 건 어때요?","questionForReflection":"금요일에 쇼핑 앱을 열던 순간, 어떤 마음이었는지 떠올려 볼까요?"}
+            출력: {"insight":"즉흥적으로 산 쇼핑 3건은 모두 금요일이었고, 모두 후회로 남았어요. 금요일에 쇼핑 앱을 여는 순간이 바꿔 볼 지점이에요.","comparison":"","suggestion":"금요일에 쇼핑 앱을 열면 장바구니에만 담아 두고 다음 날 다시 보는 건 어때요?","questionForReflection":"금요일에 쇼핑 앱을 열던 순간, 어떤 마음이었는지 떠올려 볼까요?"}
             """;
 
 
