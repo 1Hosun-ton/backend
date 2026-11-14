@@ -7,7 +7,7 @@ import java.util.Set;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-/** AI 문장 검증: 숫자는 comparison 에만, 훈계·격식체 금지, 끝맺음 확인. */
+/** AI 문장 검증: 통계에 없는 숫자 금지, 훈계·격식체 금지, 끝맺음 확인. */
 class InsightNarratorValidationTest {
 
     private final InsightNarrator narrator = new InsightNarrator(null, null);
@@ -31,7 +31,7 @@ class InsightNarratorValidationTest {
     @Test
     void 숫자_위치_훈계_격식체_끝맺음을_어기면_거부한다() {
         assertThatThrownBy(() -> narrator.validate(
-                text("배달 음식이 11.4% 높아요.", "", SUGGESTION, QUESTION), false, NUMBERS))
+                text("배달 음식이 99% 높아요.", "", SUGGESTION, QUESTION), false, NUMBERS)) // 통계에 없는 숫자
                 .isInstanceOf(InsightGenerationException.class);
         assertThatThrownBy(() -> narrator.validate(
                 text(INSIGHT, "", "배달은 반드시 줄이세요?", QUESTION), false, NUMBERS))

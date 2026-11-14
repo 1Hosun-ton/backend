@@ -36,6 +36,26 @@ class InsightCalculatorTest {
     }
 
     @Test
+    void 패턴과_다른_이유_기록의_후회와_기분을_따로_센다() {
+        List<Expense> current = List.of(
+                Expense.create(1L, START, DELIVERY, 9000, STRESS, true, com.hosunton.backend.domain.expense.ExpenseMood.TIRED, null, Instant.EPOCH),
+                Expense.create(1L, START, DELIVERY, 9000, STRESS, true, com.hosunton.backend.domain.expense.ExpenseMood.TIRED, null, Instant.EPOCH),
+                Expense.create(1L, START, CAFE, 9000, STRESS, false, null, null, Instant.EPOCH),
+                e(FOOD, NEED, 9000), regret(SHOPPING, REWARD, 9000));
+        InsightAnalysis.Pattern p = InsightCalculator.findKeyPattern(current); // 스트레스 3건 중 2건 후회 → REASON_REGRET
+
+        InsightAnalysis.PatternContrast c = InsightCalculator.contrast(p, current);
+
+        assertThat(p.type()).isEqualTo(InsightAnalysis.PatternType.REASON_REGRET);
+        assertThat(p.item()).isEqualTo(DELIVERY);
+        assertThat(c.representativeItemCount()).isEqualTo(2);
+        assertThat(c.othersCount()).isEqualTo(2);
+        assertThat(c.othersRegretCount()).isEqualTo(1);
+        assertThat(c.patternMoods()).containsEntry(com.hosunton.backend.domain.expense.ExpenseMood.TIRED, 2);
+        assertThat(c.othersMoods()).isEmpty();
+    }
+
+    @Test
     void 항목_패턴이_없으면_이유_금액_후회_빈도_순으로_찾는다() {
         // ② 할인 2건(쇼핑 25000, 카페 5000) 평균 15000 ≥ 다른 이유 평균 6000 × 1.2 → 대표 항목은 쇼핑
         InsightAnalysis.Pattern amount = InsightCalculator.findKeyPattern(List.of(

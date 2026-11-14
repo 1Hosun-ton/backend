@@ -1,6 +1,7 @@
 package com.hosunton.backend.domain.insight.ai;
 
 import com.hosunton.backend.domain.expense.ExpenseItem;
+import com.hosunton.backend.domain.expense.ExpenseMood;
 import com.hosunton.backend.domain.expense.ExpenseReason;
 import com.hosunton.backend.domain.insight.InsightLabels;
 import com.hosunton.backend.domain.insight.PeriodType;
@@ -30,7 +31,7 @@ import java.util.regex.Matcher;
 public class InsightNarrator {
 
     private static final int MAX_ATTEMPTS = 2;
-    private static final int MAX_INSIGHT_LENGTH = 80;
+    private static final int MAX_INSIGHT_LENGTH = 110;
     private static final int MAX_COMPARISON_LENGTH = 60;
     private static final int MAX_SUGGESTION_LENGTH = 60;
     private static final int MAX_QUESTION_LENGTH = 55;
@@ -80,6 +81,7 @@ public class InsightNarrator {
                         "count", s.count(), "ratio", s.ratio()))
                 .toList());
         InsightAnalysis.Pattern p = a.pattern();
+        InsightAnalysis.PatternContrast c = a.contrast();
         Map<String, Object> keyPattern = new LinkedHashMap<>();
         keyPattern.put("patternType", p.type().name());
         keyPattern.put("reason", InsightLabels.of(p.reason()));
@@ -91,7 +93,22 @@ public class InsightNarrator {
         keyPattern.put("itemTotal", p.itemTotal());
         keyPattern.put("regretCount", p.comboRegretCount());
         keyPattern.put("shareOfTotal", percent(p.comboTotal(), a.totalAmount()));
+        keyPattern.put("regretRate", wholePercent(p.comboRegretCount(), p.comboCount()));
+        keyPattern.put("representativeItemCount", c.representativeItemCount());
+        keyPattern.put("moods", moodCounts(c.patternMoods()));
         current.put("keyPattern", keyPattern);
+
+        // 비교 대상: ITEM_AMOUNT 는 같은 항목의 다른 이유 기록, 그 외는 다른 이유 기록. 기분은 입력한 기록만 센다.
+        Map<String, Object> comparedTo = new LinkedHashMap<>();
+        comparedTo.put("count", c.othersCount());
+        comparedTo.put("regretCount", c.othersRegretCount());
+        comparedTo.put("regretRate", c.othersCount() == 0 ? null : wholePercent(c.othersRegretCount(), c.othersCount()));
+        comparedTo.put("averageAmount", c.othersCount() == 0 ? null : p.othersAverage());
+        comparedTo.put("averageRatio", p.othersAverage() == 0 ? null
+                : BigDecimal.valueOf(p.comboAverage()).divide(BigDecimal.valueOf(p.othersAverage()), 1, RoundingMode.HALF_UP)
+                        .doubleValue());
+        comparedTo.put("moods", moodCounts(c.othersMoods()));
+        current.put("comparedTo", comparedTo);
         payload.put("current_stats", current);
 
         if (a.previous() == null) {
@@ -130,8 +147,8 @@ public class InsightNarrator {
         String question = text.questionForReflection().trim();
         String comparison = hasPrevious && !isBlank(text.comparison()) ? text.comparison().trim() : null;
 
-        // 숫자는 comparison 에만 쓴다. 나머지 문장의 숫자는 근거 카드(evidence)와 겹치거나 틀릴 수 있다.
-        checkSentence("insight", insight, MAX_INSIGHT_LENGTH, ".", false, allowedNumbers);
+        // 숫자는 insight·comparison 에만 쓰고, 입력 통계에 있는 숫자만 허용한다.
+        checkSentence("insight", insight, MAX_INSIGHT_LENGTH, ".", true, allowedNumbers);
         checkSentence("suggestion", suggestion, MAX_SUGGESTION_LENGTH, "?", false, allowedNumbers);
         checkSentence("questionForReflection", question, MAX_QUESTION_LENGTH, "?", false, allowedNumbers);
         if (comparison != null) {
@@ -202,6 +219,20 @@ public class InsightNarrator {
             plain = new BigDecimal(plain).stripTrailingZeros().toPlainString();
         }
         return plain;
+    }
+
+    /** 기분 라벨별 건수 (건수 많은 순) */
+    private static Map<String, Integer> moodCounts(Map<ExpenseMood, Integer> moods) {
+        Map<String, Integer> result = new LinkedHashMap<>();
+        moods.entrySet().stream()
+                .sorted(Map.Entry.<ExpenseMood, Integer>comparingByValue().reversed())
+                .forEach(e -> result.put(InsightLabels.of(e.getKey()), e.getValue()));
+        return result;
+    }
+
+    /** part ÷ whole × 100, 정수 반올림 */
+    private static int wholePercent(int part, int whole) {
+        return whole == 0 ? 0 : (int) Math.round(part * 100.0 / whole);
     }
 
     /** part ÷ whole × 100, 소수 첫째 자리 */
