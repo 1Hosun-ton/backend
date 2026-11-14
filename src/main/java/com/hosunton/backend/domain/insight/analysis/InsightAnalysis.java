@@ -1,16 +1,19 @@
 package com.hosunton.backend.domain.insight.analysis;
 
 import com.hosunton.backend.domain.expense.ExpenseItem;
+import com.hosunton.backend.domain.expense.ExpenseMood;
 import com.hosunton.backend.domain.expense.ExpenseReason;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 코드로 계산한 기간 통계. LLM은 이 값을 문장으로만 풀어 쓰고 숫자를 새로 만들지 않는다.
  *
  * @param previous 직전 기간에 기록이 없으면 null (비교 문구를 숨긴다)
  * @param pattern  조건을 만족하는 패턴이 없으면 null
+ * @param contrast 핵심 패턴과 나머지 기록의 대비. pattern 이 null 이면 null
  */
 public record InsightAnalysis(
         long totalAmount,
@@ -19,7 +22,8 @@ public record InsightAnalysis(
         List<ReasonShare> reasonBreakdown,
         List<TrendPoint> trend,
         PreviousSummary previous,
-        Pattern pattern
+        Pattern pattern,
+        PatternContrast contrast
 ) {
 
     public boolean hasPattern() {
@@ -33,6 +37,19 @@ public record InsightAnalysis(
      */
     public record ReasonShare(ExpenseReason reason, long amount, int count, double ratio,
                               Double previousRatio, Double changePercentagePoint) {
+    }
+
+    /**
+     * 핵심 패턴 기록과 비교 대상 기록의 대비. 비교 대상은 ITEM_AMOUNT 면 같은 항목의 다른 이유 기록, 그 외는 다른 이유 기록이다.
+     *
+     * @param othersCount             비교 대상 기록 수
+     * @param othersRegretCount       비교 대상 중 후회한 기록 수
+     * @param representativeItemCount 패턴 기록 중 대표 항목(pattern.item) 기록 수
+     * @param patternMoods            패턴 기록의 기분별 건수 (기분을 입력한 기록만)
+     * @param othersMoods             비교 대상 기록의 기분별 건수
+     */
+    public record PatternContrast(int othersCount, int othersRegretCount, int representativeItemCount,
+                                  Map<ExpenseMood, Integer> patternMoods, Map<ExpenseMood, Integer> othersMoods) {
     }
 
     /** 주간은 날짜별, 월간은 주차별(주차의 그 달 안 첫날). */
