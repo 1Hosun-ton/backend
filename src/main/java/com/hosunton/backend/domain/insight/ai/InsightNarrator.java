@@ -13,7 +13,6 @@ import tools.jackson.databind.json.JsonMapper;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
-import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -31,7 +30,15 @@ import java.util.regex.Matcher;
 public class InsightNarrator {
 
     private static final int MAX_ATTEMPTS = 2;
-    private static final int MAX_TEXT_LENGTH = 200;
+    private static final int MAX_INSIGHT_LENGTH = 80;
+    private static final int MAX_COMPARISON_LENGTH = 60;
+    private static final int MAX_SUGGESTION_LENGTH = 60;
+    private static final int MAX_QUESTION_LENGTH = 55;
+    private static final java.util.regex.Pattern LATIN = java.util.regex.Pattern.compile("[A-Za-z]");
+    /** 훈계·단정·격식체 표현 (기획안 7-1 제약). 프롬프트에서도 금지하지만 모델이 어길 때를 대비해 코드로 막는다. */
+    private static final List<String> BANNED_EXPRESSIONS = List.of(
+            "해야 해요", "해야 합니다", "하세요", "줄이세요", "낭비", "과소비", "문제", "나쁜", "절대", "반드시",
+            "습니다", "됩니다", "!", "！");
     private static final java.util.regex.Pattern NUMBER = java.util.regex.Pattern.compile("\\d[\\d,]*(?:\\.\\d+)?");
 
     private final InsightWriter insightWriter;
@@ -81,6 +88,8 @@ public class InsightNarrator {
         keyPattern.put("comboAverage", p.comboAverage());
         keyPattern.put("othersAverage", p.othersAverage());
         keyPattern.put("itemTotal", p.itemTotal());
+        keyPattern.put("regretCount", p.comboRegretCount());
+        keyPattern.put("shareOfTotal", percent(p.comboTotal(), a.totalAmount()));
         current.put("keyPattern", keyPattern);
         payload.put("current_stats", current);
 
@@ -93,6 +102,11 @@ public class InsightNarrator {
             Map<String, Object> changes = new LinkedHashMap<>();
             changes.put("totalAmountChangeRate", a.previous().totalAmountChangeRate());
             changes.put("regretCountChange", a.regretCount() - a.previous().regretCount());
+            // 핵심 패턴 이유의 비중 변화(%p). 직전 기간에 그 이유가 없었으면 비중 0에서의 변화다.
+            changes.put("keyReasonChangePercentagePoint", a.reasonBreakdown().stream()
+                    .filter(s -> s.reason() == p.reason() && s.changePercentagePoint() != null)
+                    .map(InsightAnalysis.ReasonShare::changePercentagePoint)
+                    .findFirst().orElse(null));
             changes.put("reasonRatioChanges", a.reasonBreakdown().stream()
                     .filter(s -> s.changePercentagePoint() != null)
                     .map(s -> Map.of("reason", InsightLabels.of(s.reason()),
@@ -110,25 +124,48 @@ public class InsightNarrator {
                 || isBlank(text.questionForReflection())) {
             throw new InsightGenerationException("Missing required sentence");
         }
+        String insight = text.insight().trim();
+        String suggestion = text.suggestion().trim();
+        String question = text.questionForReflection().trim();
         String comparison = hasPrevious && !isBlank(text.comparison()) ? text.comparison().trim() : null;
-        List<String> sentences = new ArrayList<>(List.of(text.insight(), text.suggestion(), text.questionForReflection()));
+
+        // 숫자는 comparison 에만 쓴다. 나머지 문장의 숫자는 근거 카드(evidence)와 겹치거나 틀릴 수 있다.
+        checkSentence("insight", insight, MAX_INSIGHT_LENGTH, ".", false, allowedNumbers);
+        checkSentence("suggestion", suggestion, MAX_SUGGESTION_LENGTH, "?", false, allowedNumbers);
+        checkSentence("questionForReflection", question, MAX_QUESTION_LENGTH, "?", false, allowedNumbers);
         if (comparison != null) {
-            sentences.add(comparison);
+            checkSentence("comparison", comparison, MAX_COMPARISON_LENGTH, null, true, allowedNumbers);
         }
-        for (String sentence : sentences) {
-            if (sentence.length() > MAX_TEXT_LENGTH) {
-                throw new InsightGenerationException("Sentence too long");
-            }
-            Matcher m = NUMBER.matcher(sentence);
-            while (m.find()) {
-                String number = normalize(m.group());
-                if (!allowedNumbers.contains(number)) {
-                    throw new InsightGenerationException("Number not in stats: " + number);
-                }
+        return new InsightText(insight, comparison, suggestion, question);
+    }
+
+    /** 길이·끝맺음·금지 표현·숫자를 확인한다. 어기면 재시도 대상이 된다. */
+    private static void checkSentence(String field, String sentence, int maxLength, String ending,
+                                      boolean numbersAllowed, Set<String> allowedNumbers) {
+        if (sentence.length() > maxLength) {
+            throw new InsightGenerationException(field + " too long");
+        }
+        if (ending != null && !sentence.endsWith(ending)) {
+            throw new InsightGenerationException(field + " has wrong ending");
+        }
+        if (LATIN.matcher(sentence.replace("%p", "")).find()) { // 퍼센트포인트 표기(%p)만 허용
+            throw new InsightGenerationException(field + " contains latin letters");
+        }
+        for (String banned : BANNED_EXPRESSIONS) {
+            if (sentence.contains(banned)) {
+                throw new InsightGenerationException(field + " contains banned expression: " + banned);
             }
         }
-        return new InsightText(text.insight().trim(), comparison, text.suggestion().trim(),
-                text.questionForReflection().trim());
+        Matcher m = NUMBER.matcher(sentence);
+        while (m.find()) {
+            String number = normalize(m.group());
+            if (!numbersAllowed) {
+                throw new InsightGenerationException(field + " must not contain numbers");
+            }
+            if (!allowedNumbers.contains(number)) {
+                throw new InsightGenerationException("Number not in stats: " + number);
+            }
+        }
     }
 
     /** 입력 통계에 있는 숫자와 그 반올림·절댓값, 기간 날짜 숫자만 허용한다. */
@@ -164,6 +201,15 @@ public class InsightNarrator {
             plain = new BigDecimal(plain).stripTrailingZeros().toPlainString();
         }
         return plain;
+    }
+
+    /** part ÷ whole × 100, 소수 첫째 자리 */
+    private static double percent(long part, long whole) {
+        if (whole == 0) {
+            return 0.0;
+        }
+        return BigDecimal.valueOf(part).multiply(BigDecimal.valueOf(100))
+                .divide(BigDecimal.valueOf(whole), 1, RoundingMode.HALF_UP).doubleValue();
     }
 
     private static boolean isBlank(String s) {

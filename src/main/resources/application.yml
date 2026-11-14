@@ -28,6 +28,7 @@ gemini:
     api-key: ${GEMINI_API_KEY:}
     model: ${GEMINI_MODEL:gemini-3.5-flash-lite}
     timeout: 15s
+    thinking-level: ${GEMINI_THINKING_LEVEL:}
 # 허용할 프론트 주소. 여러 개면 쉼표로 구분한다. (예: http://localhost:5173,https://xxx.vercel.app)
 cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173}

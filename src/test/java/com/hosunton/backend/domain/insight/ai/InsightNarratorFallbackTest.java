@@ -22,7 +22,7 @@ class InsightNarratorFallbackTest {
     private static InsightAnalysis analysis(ExpenseReason reason, ExpenseItem item,
                                             InsightAnalysis.PreviousSummary previous) {
         return new InsightAnalysis(196650, 15, 4, List.of(), List.of(), previous,
-                new InsightAnalysis.Pattern(reason, item, 3, 73500, 24500, 11750, 97000));
+                new InsightAnalysis.Pattern(reason, item, 3, 73500, 24500, 11750, 97000, 2));
     }
 
     @Test
