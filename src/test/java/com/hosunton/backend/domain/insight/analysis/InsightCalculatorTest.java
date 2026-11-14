@@ -12,8 +12,13 @@ import java.util.List;
 
 import static com.hosunton.backend.domain.expense.ExpenseItem.CAFE;
 import static com.hosunton.backend.domain.expense.ExpenseItem.DELIVERY;
+import static com.hosunton.backend.domain.expense.ExpenseItem.FOOD;
+import static com.hosunton.backend.domain.expense.ExpenseItem.SHOPPING;
+import static com.hosunton.backend.domain.expense.ExpenseReason.DISCOUNT;
 import static com.hosunton.backend.domain.expense.ExpenseReason.HABIT;
+import static com.hosunton.backend.domain.expense.ExpenseReason.IMPULSE;
 import static com.hosunton.backend.domain.expense.ExpenseReason.NEED;
+import static com.hosunton.backend.domain.expense.ExpenseReason.REWARD;
 import static com.hosunton.backend.domain.expense.ExpenseReason.STRESS;
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -24,6 +29,41 @@ class InsightCalculatorTest {
 
     private static Expense e(ExpenseItem item, ExpenseReason reason, int amount) {
         return Expense.create(1L, START, item, amount, reason, false, null, null, Instant.EPOCH);
+    }
+
+    private static Expense regret(ExpenseItem item, ExpenseReason reason, int amount) {
+        return Expense.create(1L, START, item, amount, reason, true, null, null, Instant.EPOCH);
+    }
+
+    @Test
+    void 항목_패턴이_없으면_이유_금액_후회_빈도_순으로_찾는다() {
+        // ② 할인 2건(쇼핑 25000, 카페 5000) 평균 15000 ≥ 다른 이유 평균 6000 × 1.2 → 대표 항목은 쇼핑
+        InsightAnalysis.Pattern amount = InsightCalculator.findKeyPattern(List.of(
+                e(SHOPPING, DISCOUNT, 25000), e(CAFE, DISCOUNT, 5000),
+                e(FOOD, NEED, 8000), e(DELIVERY, STRESS, 6000), e(CAFE, HABIT, 4000)));
+        assertThat(amount.type()).isEqualTo(InsightAnalysis.PatternType.REASON_AMOUNT);
+        assertThat(amount.reason()).isEqualTo(DISCOUNT);
+        assertThat(amount.item()).isEqualTo(SHOPPING);
+        assertThat(amount.comboCount()).isEqualTo(2);
+
+        // ③ 충동 2건 모두 후회, 금액은 평균 이하
+        InsightAnalysis.Pattern regretPattern = InsightCalculator.findKeyPattern(List.of(
+                regret(SHOPPING, IMPULSE, 5000), regret(CAFE, IMPULSE, 5000),
+                e(FOOD, NEED, 9000), e(DELIVERY, STRESS, 9000), e(CAFE, HABIT, 9000)));
+        assertThat(regretPattern.type()).isEqualTo(InsightAnalysis.PatternType.REASON_REGRET);
+        assertThat(regretPattern.reason()).isEqualTo(IMPULSE);
+
+        // ④ 금액·후회 조건 없이 필요해서 2건이 가장 잦음
+        InsightAnalysis.Pattern frequent = InsightCalculator.findKeyPattern(List.of(
+                e(FOOD, NEED, 5000), e(CAFE, NEED, 5000),
+                e(DELIVERY, STRESS, 9000), e(SHOPPING, REWARD, 9000), e(CAFE, HABIT, 9000)));
+        assertThat(frequent.type()).isEqualTo(InsightAnalysis.PatternType.REASON_FREQUENT);
+        assertThat(frequent.reason()).isEqualTo(NEED);
+
+        // 이유가 모두 1건씩이면 패턴 없음
+        assertThat(InsightCalculator.findKeyPattern(List.of(
+                e(FOOD, NEED, 5000), e(DELIVERY, STRESS, 9000), e(SHOPPING, REWARD, 9000),
+                e(CAFE, HABIT, 9000), e(SHOPPING, IMPULSE, 9000)))).isNull();
     }
 
     @Test
